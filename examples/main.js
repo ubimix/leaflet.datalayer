@@ -71,12 +71,12 @@ function main(id) {
             case 'art':
                 return 'blue';
             case 'science':
-                return 'yellow';
+                return 'orange';
             case 'archeology':
                 return 'green';
             case 'other':
             default:
-                return 'white';
+                return 'purple';
             }
         },
         /**
@@ -87,8 +87,7 @@ function main(id) {
         _drawIcon : function(type) {
             var radius = this._getRadius();
             var lineWidth = radius < MyMarkerRenderer.thresholdSize ? 1 : 2;
-            var stroke = radius < MyMarkerRenderer.thresholdSize ? 'silver'
-                    : 'gray';
+            var stroke = 'white';
             var canvas = document.createElement('canvas');
             var width = radius * 2;
             var height = radius * 2;
@@ -97,6 +96,7 @@ function main(id) {
             radius -= lineWidth;
 
             var g = canvas.getContext('2d');
+            g.globalAlpha = 0.85;
             var color = this._getColor(type);
             if (radius < MyMarkerRenderer.thresholdSize) {
                 g.beginPath();
@@ -112,7 +112,6 @@ function main(id) {
                 };
             } else {
                 g.fillStyle = color;
-                g.globalAlpha = 1;
                 g.strokeStyle = stroke;
                 g.lineWidth = lineWidth;
                 g.lineCap = 'round';
