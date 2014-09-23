@@ -516,11 +516,11 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
             // c
             g.bezierCurveTo( //
             x + width / 2 + radius, y + radius * 2, //
-            x + width / 2, y + height / 2 + radius, //
+            x + width / 2, y + height / 2 + radius / 3, //
             x + width / 2, y + height);
             // d
             g.bezierCurveTo(//
-            x + width / 2, y + height / 2 + radius, //
+            x + width / 2, y + height / 2 + radius / 3, //
             x + width / 2 - radius, y + radius * 2, //
             x + width / 2 - radius, y + radius);
             // e (a)
