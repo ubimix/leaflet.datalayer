@@ -313,6 +313,11 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
      */
     var IDataRenderer = L.Class.extend({
 
+        /** Set options for this class. */
+        initialize : function(options) {
+            L.setOptions(this, options || {});
+        },
+
         /**
          * Returns a point (L.Point instance) defining a buffer zone size in
          * pixels around each tile.
@@ -610,8 +615,7 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
             dataRenderer.onAdd(this);
             L.TileLayer.Canvas.prototype.onAdd.apply(this, arguments);
             this.on('tileunload', this._onTileUnload, this);
-            map.on('click', this._click, this);
-            map.on('mouseover mouseout mousemove', this._move, this);
+            this._initEvents('on');
             this.redraw();
         },
 
@@ -620,8 +624,7 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
          */
         onRemove : function(map) {
             this.off('tileunload', this._onTileUnload, this);
-            map.off('click', this._click, this);
-            map.off('mouseover mouseout mousemove', this._move, this);
+            this._initEvents('off');
             this._removeMouseCursorStyle();
             L.TileLayer.Canvas.prototype.onRemove.apply(this, arguments);
             var dataRenderer = this._getDataRenderer();
@@ -634,21 +637,74 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
         _initContainer : function() {
             var initContainer = L.TileLayer.Canvas.prototype._initContainer;
             initContainer.apply(this, arguments);
-            var pane = this._map._panes.markerPane;
+            var pane = this._getDataLayersPane();
             pane.appendChild(this._container);
+        },
+
+        /** Returns a pane containing all instances of this class. */
+        _getDataLayersPane : function() {
+            return this._map._panes.markerPane;
         },
 
         // --------------------------------------------------------------------
         // Event management
 
+        /** Activates/deactivates event management for this layer. */
+        _initEvents : function(onoff) {
+            var pane = this._getDataLayersPane();
+            L.DomEvent[onoff](pane, 'click', this._onMouseClick, this);
+            var events = [ 'mouseover', 'mouseout', 'mousemove' ];
+            for (var i = 0; i < events.length; i++) {
+                L.DomEvent[onoff](pane, events[i], this._fireMouseEvent, this);
+            }
+        },
+
+        /** Handles mouse click events */
+        _onMouseClick : function(e) {
+            if (this._map.dragging && this._map.dragging.moved()) {
+                return;
+            }
+            this._fireMouseEvent(e);
+        },
+
+        /** Fires mouse events for this layer */
+        _fireMouseEvent : function(e) {
+            // if (!this.hasEventListeners(e.type)) {
+            // return;
+            // }
+            var map = this._map;
+            var containerPoint = map.mouseEventToContainerPoint(e);
+            var layerPoint = map.containerPointToLayerPoint(containerPoint);
+            var latlng = map.layerPointToLatLng(layerPoint);
+            var event = {
+                latlng : latlng,
+                layerPoint : layerPoint.round(),
+                containerPoint : containerPoint,
+                originalEvent : e
+            };
+            var cancel = false;
+            if (e.type === 'mouseover' || e.type === 'mouseout'
+                    || e.type === 'mousemove') {
+                cancel = this._move(event);
+            } else if (e.type === 'click') {
+                cancel = this._click(event);
+            }
+            if (cancel) {
+                L.DomEvent.stopPropagation(e);
+            }
+        },
+
         /** Map click handler */
         _click : function(e) {
-            if (!this.hasEventListeners('click'))
-                return;
-            var on = this._objectForEvent(e);
-            if (on.data) {
-                this.fire('click', on);
+            var handled = false;
+            if (this.hasEventListeners('click')) {
+                var on = this._objectForEvent(e);
+                if (on.data) {
+                    this.fire('click', on);
+                    handled = true;
+                }
             }
+            return handled;
         },
 
         /** Map move handler */
@@ -657,26 +713,37 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
             // && !this.hasEventListeners('mouseover')
             // && !this.hasEventListeners('mousemove'))
             // return;
+            var handled = false;
             var on = this._objectForEvent(e);
             if (on.data !== this._mouseOn) {
                 if (this._mouseOn) {
-                    this.fire('mouseout', {
-                        latlng : e.latlng,
-                        data : this._mouseOn
-                    });
+                    if (this.hasEventListeners('mouseout')) {
+                        var data = on.data;
+                        on.data = this._mouseOn;
+                        this.fire('mouseout', on);
+                        on.data = data;
+                        handled = true;
+                    }
                     this._removeMouseCursorStyle();
                 }
                 if (on.data) {
-                    this.fire('mouseover', on);
+                    if (this.hasEventListeners('mouseover')) {
+                        this.fire('mouseover', on);
+                        handled = true;
+                    }
                     this._setMouseCursorStyle();
                 }
                 this._mouseOn = on.data;
             } else if (on.data) {
-                this.fire('mousemove', on);
+                if (this.hasEventListeners('mousemove')) {
+                    this.fire('mousemove', on);
+                    handled = true;
+                }
             }
+            return handled;
         },
-
         // --------------------------------------------------------------------
+
         // Cursor style management
 
         /**
@@ -733,7 +800,9 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
             var dataProvider = this._getDataProvider();
             if (dataProvider.setData) {
                 dataProvider.setData(data);
-                this.redraw();
+                if (this._map) {
+                    this.redraw();
+                }
             }
         },
 
@@ -864,10 +933,8 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
                     data = index.getData(canvasX, canvasY);
                 }
             }
-            return {
-                latlng : latlng,
-                data : data
-            };
+            e.data = data;
+            return e;
         },
 
         /**

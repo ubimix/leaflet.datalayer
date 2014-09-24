@@ -87,6 +87,7 @@ function main(id) {
         _drawIcon : function(type) {
             var radius = this._getRadius();
             var lineWidth = radius < MyMarkerRenderer.thresholdSize ? 1 : 2;
+            var color = this._getColor(type);
             var stroke = 'white';
             var canvas = document.createElement('canvas');
             var width = radius * 2;
@@ -97,7 +98,6 @@ function main(id) {
 
             var g = canvas.getContext('2d');
             g.globalAlpha = 0.85;
-            var color = this._getColor(type);
             if (radius < MyMarkerRenderer.thresholdSize) {
                 g.beginPath();
                 g.arc(width / 2, height / 2, radius, 0, 2 * Math.PI, false);
@@ -123,7 +123,7 @@ function main(id) {
                 g.stroke();
                 return {
                     image : canvas,
-                    anchor : L.point(width / 2, height)
+                    anchor : L.point(width / 2, height - lineWidth * 2)
                 };
             }
         },
