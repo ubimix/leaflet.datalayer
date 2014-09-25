@@ -355,7 +355,6 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
         onAdd : function(layer) {
             this._layer = layer;
             this._map = layer._map;
-            this.options = this._layer.options;
         },
 
         /**
@@ -364,7 +363,6 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
         onRemove : function(layer) {
             delete this._layer;
             delete this._map;
-            delete this.options;
         },
 
     });
