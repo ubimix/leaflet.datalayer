@@ -116,11 +116,31 @@ function main(id) {
                 g.lineWidth = lineWidth;
                 g.lineCap = 'round';
                 // This method is defined in the parent class.
+                var pinRadius = radius * 0.6;
                 this._drawMarker(g, lineWidth, lineWidth,
                         width - lineWidth * 2, height - lineWidth * 2,
-                        radius * 0.6);
+                        pinRadius);
                 g.fill();
                 g.stroke();
+
+                // A hole in the middle
+                var r = pinRadius / 4;
+                var x = width / 2;
+                var y = pinRadius + lineWidth;
+                g.beginPath();
+                g.globalAlpha = 1;
+                g.globalCompositeOperation = 'destination-out';
+                g.arc(x, y, r, 0, 2 * Math.PI, false);
+                g.fill();
+
+                // A border around the hole
+                g.beginPath();
+                g.lineWidth = lineWidth / 2;
+                g.globalCompositeOperation = 'source-over';
+                g.arc(x, y, r, 0, 2 * Math.PI, false);
+                g.strokeStyle = stroke;
+                g.stroke();
+
                 return {
                     image : canvas,
                     anchor : L.point(width / 2, height - lineWidth * 2)
