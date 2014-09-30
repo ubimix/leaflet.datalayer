@@ -145,7 +145,7 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
             var mask = new Array(image.width * image.height);
             for (var y = 0; y < image.height; y++) {
                 for (var x = 0; x < image.width; x++) {
-                    var idx = (y * image.width + x) * 4 + 3;
+                    var idx = (y * image.width + x) * 4 + 3; // Alpha channel
                     var maskX = this._getMaskX(x);
                     var maskY = this._getMaskY(y);
                     mask[maskY * maskWidth + maskX] = data[idx] ? 1 : 0;
@@ -367,6 +367,37 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
 
     });
 
+    /** Initializes internal methods. */
+    function AnimationProcessor(context) {
+        var that = this || {};
+        that._context = context || window;
+        that.requestAnimationFrame = (function(context) {
+            return (context.requestAnimationFrame || //
+            context.mozRequestAnimationFrame || //
+            context.webkitRequestAnimationFrame || //
+            context.msRequestAnimationFrame || //
+            function(callback) {
+                return context.setTimeout(callback, 1000 / 60);
+            });
+        })(that._context);
+        that.cancelAnimationFrame = (function(context) {
+            return (context.cancelAnimationFrame || //
+            context.mozCancelAnimationFrame || //
+            context.webkitCancelAnimationFrame || //
+            context.msCancelAnimationFrame || //
+            function(id) {
+                clearTimeout(id);
+            });
+        })(that._context);
+        that.cancel = function(id) {
+            this.cancelAnimationFrame.call(this._context, id);
+        }
+        that.render = function(action) {
+            return this.requestAnimationFrame.call(this._context, action);
+        }
+        return that;
+    }
+
     /**
      * A common interface visualizing data on canvas.
      */
@@ -392,26 +423,38 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
          *         tile;
          */
         drawFeature : function(tilePoint, bbox, resource, callback) {
-            var coords = this._getCoordinates(resource);
-            if (!coords) {
-                callback(null, null);
-                return;
+            try {
+                var coords = this._getCoordinates(resource);
+                if (!coords) {
+                    callback(null, null);
+                    return;
+                }
+                var p = this._map.project(coords);
+                var tileSize = this._layer._getTileSize();
+                var s = tilePoint.multiplyBy(tileSize);
+                var x = Math.round(p.x - s.x);
+                var y = Math.round(p.y - s.y);
+                var anchor = L.point(x, y);
+                this._getIconInfo(resource, function(icon) {
+                    var image, err;
+                    try {
+                        icon = icon || {};
+                        if (icon.anchor) {
+                            anchor._subtract(icon.anchor);
+                        }
+                        image = icon.image;
+                    } catch (e) {
+                        err = e;
+                    } finally {
+                        callback(err, {
+                            image : image,
+                            anchor : anchor
+                        });
+                    }
+                });
+            } catch (err) {
+                callback(err);
             }
-            var p = this._map.project(coords);
-            var tileSize = this._layer._getTileSize();
-            var s = tilePoint.multiplyBy(tileSize);
-
-            var x = Math.round(p.x - s.x);
-            var y = Math.round(p.y - s.y);
-            var icon = this._getIconInfo(resource);
-            var anchor = L.point(x, y);
-            if (icon.anchor) {
-                anchor._subtract(icon.anchor);
-            }
-            callback(null, {
-                image : icon.image,
-                anchor : anchor
-            });
         },
 
         // -----------------------------------------------------------------
@@ -434,24 +477,46 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
          * Loads and returns icon information corresponding to the specified
          * resource.
          */
-        _getIconInfo : function(resource) {
-            var type = this._getResourceType(resource);
-            var map = this._map;
-            var zoom = map.getZoom();
-            var iconIndex = this._iconIndex = this._iconIndex || {};
-            var indexKey = zoom + ':' + type;
-            var icon = iconIndex[indexKey];
-            if (!icon) {
-                icon = this._drawIcon(type);
-                iconIndex[indexKey] = icon;
+        _getIconInfo : function(resource, callback) {
+            var err, icon;
+            try {
+                var map = this._map;
+                var zoom = map.getZoom();
+                var indexKey = this._getResourceIconKey(resource, zoom);
+                var iconIndex = this._iconIndex = this._iconIndex || {};
+                icon = iconIndex[indexKey];
+                if (icon) {
+                    return icon;
+                }
+                var loading = this._loading = this._loading || {};
+                var queue = loading[indexKey];
+                if (!queue) {
+                    queue = loading[indexKey] = [];
+                    queue.done = function(icon) {
+                        iconIndex[indexKey] = icon;
+                        delete loading[indexKey];
+                        for (var i = 0; i < queue.length; i++) {
+                            queue[i](icon);
+                        }
+                    };
+                    icon = this._drawResourceIcon(resource, queue.done);
+                }
+                queue.push(callback);
+                if (icon) {
+                    callback = queue.done;
+                }
+            } catch (e) {
+                icon = {
+                    error : e
+                }
+            } finally {
+                if (icon !== undefined) {
+                    callback(icon);
+                }
             }
-            return icon;
         },
 
-        /** Returns the type (as a string) of the specified resource. */
-        _getResourceType : function(resource) {
-            return 'resource';
-        },
+        // --------------------------------------------------------------------
 
         /** Returns an option value */
         _getOptionValue : function(key) {
@@ -475,13 +540,44 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
             return this._getVal('radius', 16);
         },
 
+        // --------------------------------------------------------------------
+        // Resource-specific methods
+
+        /**
+         * Returns a cache key specific for the given resource type and the
+         * current zoom level. This key is used to cache resource-specific icons
+         * for each zoom level.
+         */
+        _getResourceIconKey : function(resource, zoom) {
+            var type = this._getResourceType(resource);
+            var indexKey = zoom + ':' + type;
+            return indexKey;
+        },
+
+        /**
+         * Draws an icon and returns information about it as an object with the
+         * following fields: a) 'image' - an Image or a Canvas instance b)
+         * 'anchor' a L.Point instance defining the position on the icon
+         * corresponding to the resource coordinates. This method can return
+         * values asyncrhonously using the specified callback method.
+         */
+        _drawResourceIcon : function(resource, callback) {
+            var type = this._getResourceType(resource);
+            return this._drawIcon(type, callback);
+        },
+
+        /** Returns the type (as a string) of the specified resource. */
+        _getResourceType : function(resource) {
+            return 'resource';
+        },
+
         /**
          * Draws an icon and returns information about it as an object with the
          * following fields: a) 'image' - an Image or a Canvas instance b)
          * 'anchor' a L.Point instance defining the position on the icon
          * corresponding to the resource coordinates
          */
-        _drawIcon : function(type) {
+        _drawIcon : function(type, callback) {
             var radius = this._getRadius();
             var canvas = document.createElement('canvas');
             var lineWidth = this._getVal('lineWidth', 1);
@@ -500,10 +596,10 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
                     height - lineWidth * 2, radius * 0.6);
             g.fill();
             g.stroke();
-            return {
+            callback({
                 image : canvas,
                 anchor : L.point(width / 2, height)
-            };
+            });
         },
 
         /** Draws a simple marker */
@@ -584,6 +680,7 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
         initialize : function(options) {
             // Not used anymore. Deprecated. To remove.
             this._canvasLayer = this;
+            this._processor = new AnimationProcessor();
             options.fillOpacity = options.opacity;
             delete options.opacity;
             var url = null;
@@ -826,28 +923,22 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
             var bbox = this._getTileBoundingBox(tilePoint);
             var dataProvider = this._getDataProvider();
             function renderData(data) {
-                var counter = data ? data.length : 0;
-                L.Util.invokeEach(data, function(i, d) {
-                    var dataRenderer = that._getDataRenderer();
+                var len = data ? data.length : 0;
+                var dataRenderer = that._getDataRenderer();
+                for (var i = 0; i < len; i++) {
+                    var d = data[i];
                     dataRenderer.drawFeature(tilePoint, bbox, d, //
                     function(error, ctx) {
-                        try {
-                            if (error) {
-                                that._handleRenderError(canvas, tilePoint,
-                                        error);
-                            } else if (ctx && ctx.image) {
-                                var index = that._getCanvasIndex(canvas, true);
-                                index.draw(ctx.image, //
-                                ctx.anchor.x, ctx.anchor.y, d);
-                            }
-                        } finally {
-                            counter--;
-                            if (counter === 0) {
-                                that.tileDrawn(canvas);
-                            }
+                        if (error) {
+                            that._handleRenderError(canvas, tilePoint, error);
+                        } else if (ctx && ctx.image) {
+                            var index = that._getCanvasIndex(canvas, true);
+                            index.draw(ctx.image, //
+                            ctx.anchor.x, ctx.anchor.y, d);
                         }
                     });
-                });
+                }
+                that.tileDrawn(canvas);
             }
             dataProvider.loadData(bbox, tilePoint, function(error, data) {
                 if (error) {
@@ -859,12 +950,15 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
                     that.tileDrawn(canvas);
                     return;
                 }
-                try {
-                    renderData(data);
-                } catch (error) {
-                    that._handleRenderError(canvas, tilePoint, error);
-                    that.tileDrawn(canvas);
-                }
+
+                that._processor.render(function() {
+                    try {
+                        renderData(data);
+                    } catch (error) {
+                        that._handleRenderError(canvas, tilePoint, error);
+                        that.tileDrawn(canvas);
+                    }
+                });
             });
         },
 
