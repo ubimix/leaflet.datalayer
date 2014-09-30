@@ -14,12 +14,74 @@ if (typeof define !== "function" || !define.amd) {
 }
 define([ 'leaflet', 'rbush' ], function(L, rbush) {
 
+    // Namespace
+    var NS = {};
+
+    /** This method could be overloaded to define a "real" promise */
+    NS.Promise = Promise;
+
+    // --------------------------------------------------------------------
+    /**
+     * A very simple promise implementation copied (with modifications) from
+     * https://gist.github.com/unscriptable/814052
+     */
+    // (c) copyright unscriptable.com / John Hann License MIT
+    // For more robust promises, see https://github.com/briancavalier/when.js.
+    function Promise() {
+        var thens = [];
+        var deferred = {};
+        function complete(which, arg) {
+            deferred.then = which === 'resolve' ? function(resolve, reject) {
+                resolve && resolve(arg);
+            } : function(resolve, reject) {
+                reject && reject(arg);
+            };
+            deferred.resolve = deferred.reject = function() {
+                throw new Error('Promise already completed.');
+            };
+            var aThen, i = 0;
+            while (aThen = thens[i++]) {
+                aThen[which] && aThen[which](arg);
+            }
+        }
+        deferred.then = function(onResolve, onReject) {
+            var next = Promise();
+            function complete(result, method) {
+                try {
+                    next.resolve(method(result));
+                } catch (err) {
+                    next.reject(err);
+                }
+            }
+            thens.push({
+                resolve : function(result) {
+                    complete(result, onResolve || function(r) {
+                        return r;
+                    });
+                },
+                reject : function(err) {
+                    complete(err, onReject || function(e) {
+                        throw e;
+                    });
+                },
+            });
+            return next;
+        };
+        deferred.resolve = function(val) {
+            complete('resolve', val);
+        };
+        deferred.reject = function(ex) {
+            complete('reject', ex);
+        };
+        return deferred;
+    }
+
     // --------------------------------------------------------------------
     /**
      * This utility class allows to associate data with non-transparent pixels
      * of images drawn on canvas.
      */
-    var IndexedCanvas = L.Class.extend({
+    var IndexedCanvas = NS.IndexedCanvas = L.Class.extend({
 
         /**
          * Initializes internal fields of this class.
@@ -178,7 +240,7 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
      * A common interface providing data for individual tiles. Used to
      * synchronously/asynchronously load data to render on tiles.
      */
-    var IDataProvider = L.Class.extend({
+    var IDataProvider = NS.IDataProvider = L.Class.extend({
 
         /**
          * This method loads returns an array of objects to show on tile
@@ -204,6 +266,8 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
 
             /** Returns a bounding box for a GeoJson object. */
             getGeoJsonBoundingBox : function(d) {
+                if (!d)
+                    return null;
                 var geom = d.geometry;
                 if (!geom || !geom.coordinates)
                     return null;
@@ -227,7 +291,7 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
      * A simple data provider synchronously indexing the given data using an
      * RTree index.
      */
-    var SimpleDataProvider = IDataProvider.extend({
+    var SimpleDataProvider = NS.SimpleDataProvider = IDataProvider.extend({
 
         /** Initializes this object and indexes the initial data set. */
         initialize : function(options) {
@@ -311,7 +375,7 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
     /**
      * A common interface visualizing data on canvas.
      */
-    var IDataRenderer = L.Class.extend({
+    var IDataRenderer = NS.IDataRenderer = L.Class.extend({
 
         /** Set options for this class. */
         initialize : function(options) {
@@ -367,41 +431,10 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
 
     });
 
-    /** Initializes internal methods. */
-    function AnimationProcessor(context) {
-        var that = this || {};
-        that._context = context || window;
-        that.requestAnimationFrame = (function(context) {
-            return (context.requestAnimationFrame || //
-            context.mozRequestAnimationFrame || //
-            context.webkitRequestAnimationFrame || //
-            context.msRequestAnimationFrame || //
-            function(callback) {
-                return context.setTimeout(callback, 1000 / 60);
-            });
-        })(that._context);
-        that.cancelAnimationFrame = (function(context) {
-            return (context.cancelAnimationFrame || //
-            context.mozCancelAnimationFrame || //
-            context.webkitCancelAnimationFrame || //
-            context.msCancelAnimationFrame || //
-            function(id) {
-                clearTimeout(id);
-            });
-        })(that._context);
-        that.cancel = function(id) {
-            this.cancelAnimationFrame.call(this._context, id);
-        }
-        that.render = function(action) {
-            return this.requestAnimationFrame.call(this._context, action);
-        }
-        return that;
-    }
-
     /**
      * A common interface visualizing data on canvas.
      */
-    var MarkersRenderer = IDataRenderer.extend({
+    var MarkersRenderer = NS.MarkersRenderer = IDataRenderer.extend({
 
         /**
          * Returns a buffer zone size (in pixels) around each tile.
@@ -423,38 +456,31 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
          *         tile;
          */
         drawFeature : function(tilePoint, bbox, resource, callback) {
-            try {
-                var coords = this._getCoordinates(resource);
-                if (!coords) {
-                    callback(null, null);
-                    return;
-                }
-                var p = this._map.project(coords);
-                var tileSize = this._layer._getTileSize();
-                var s = tilePoint.multiplyBy(tileSize);
-                var x = Math.round(p.x - s.x);
-                var y = Math.round(p.y - s.y);
-                var anchor = L.point(x, y);
-                this._getIconInfo(resource, function(icon) {
-                    var image, err;
-                    try {
-                        icon = icon || {};
-                        if (icon.anchor) {
-                            anchor._subtract(icon.anchor);
-                        }
-                        image = icon.image;
-                    } catch (e) {
-                        err = e;
-                    } finally {
-                        callback(err, {
-                            image : image,
-                            anchor : anchor
-                        });
-                    }
-                });
-            } catch (err) {
-                callback(err);
+            var coords = this._getCoordinates(resource);
+            if (!coords) {
+                callback(null, null);
+                return;
             }
+            var p = this._map.project(coords);
+            var tileSize = this._layer._getTileSize();
+            var s = tilePoint.multiplyBy(tileSize);
+
+            var x = Math.round(p.x - s.x);
+            var y = Math.round(p.y - s.y);
+            return this._loadIconInfo(resource, function(err, icon) {
+                if (err) {
+                    return callback(err);
+                }
+                icon = icon || {};
+                var anchor = L.point(x, y);
+                if (icon.anchor) {
+                    anchor._subtract(icon.anchor);
+                }
+                callback(null, {
+                    image : icon.image,
+                    anchor : anchor
+                });
+            });
         },
 
         // -----------------------------------------------------------------
@@ -474,45 +500,28 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
         },
 
         /**
-         * Loads and returns icon information corresponding to the specified
-         * resource.
+         * Loads an icon corresponding to the specified resource and returns
+         * this icon using the specified callback method.
          */
-        _getIconInfo : function(resource, callback) {
-            var err, icon;
+        _loadIconInfo : function(resource, callback) {
             try {
+                var type = this._getResourceType(resource);
                 var map = this._map;
                 var zoom = map.getZoom();
                 var indexKey = this._getResourceIconKey(resource, zoom);
                 var iconIndex = this._iconIndex = this._iconIndex || {};
-                icon = iconIndex[indexKey];
+                var icon = iconIndex[indexKey];
                 if (icon) {
-                    return icon;
+                    return callback(null, icon);
+                } else {
+                    return this._drawResourceIcon(resource,
+                            function(err, icon) {
+                                iconIndex[indexKey] = icon;
+                                return callback(err, icon);
+                            });
                 }
-                var loading = this._loading = this._loading || {};
-                var queue = loading[indexKey];
-                if (!queue) {
-                    queue = loading[indexKey] = [];
-                    queue.done = function(icon) {
-                        iconIndex[indexKey] = icon;
-                        delete loading[indexKey];
-                        for (var i = 0; i < queue.length; i++) {
-                            queue[i](icon);
-                        }
-                    };
-                    icon = this._drawResourceIcon(resource, queue.done);
-                }
-                queue.push(callback);
-                if (icon) {
-                    callback = queue.done;
-                }
-            } catch (e) {
-                icon = {
-                    error : e
-                }
-            } finally {
-                if (icon !== undefined) {
-                    callback(icon);
-                }
+            } catch (err) {
+                return callback(err);
             }
         },
 
@@ -554,18 +563,6 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
             return indexKey;
         },
 
-        /**
-         * Draws an icon and returns information about it as an object with the
-         * following fields: a) 'image' - an Image or a Canvas instance b)
-         * 'anchor' a L.Point instance defining the position on the icon
-         * corresponding to the resource coordinates. This method can return
-         * values asyncrhonously using the specified callback method.
-         */
-        _drawResourceIcon : function(resource, callback) {
-            var type = this._getResourceType(resource);
-            return this._drawIcon(type, callback);
-        },
-
         /** Returns the type (as a string) of the specified resource. */
         _getResourceType : function(resource) {
             return 'resource';
@@ -577,7 +574,7 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
          * 'anchor' a L.Point instance defining the position on the icon
          * corresponding to the resource coordinates
          */
-        _drawIcon : function(type, callback) {
+        _drawResourceIcon : function(resource, callback) {
             var radius = this._getRadius();
             var canvas = document.createElement('canvas');
             var lineWidth = this._getVal('lineWidth', 1);
@@ -596,7 +593,7 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
                     height - lineWidth * 2, radius * 0.6);
             g.fill();
             g.stroke();
-            callback({
+            return callback(null, {
                 image : canvas,
                 anchor : L.point(width / 2, height)
             });
@@ -645,13 +642,7 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
     var LeafletDataLayer = L.TileLayer.Canvas.extend({
 
         // References to classes
-        statics : {
-            IDataProvider : IDataProvider,
-            SimpleDataProvider : SimpleDataProvider,
-            IDataRenderer : IDataRenderer,
-            MarkersRenderer : MarkersRenderer,
-            IndexedCanvas : IndexedCanvas
-        },
+        statics : NS,
 
         /** Default options of this class. */
         options : {
@@ -680,7 +671,6 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
         initialize : function(options) {
             // Not used anymore. Deprecated. To remove.
             this._canvasLayer = this;
-            this._processor = new AnimationProcessor();
             options.fillOpacity = options.opacity;
             delete options.opacity;
             var url = null;
@@ -923,12 +913,27 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
             var bbox = this._getTileBoundingBox(tilePoint);
             var dataProvider = this._getDataProvider();
             function renderData(data) {
-                var len = data ? data.length : 0;
-                var dataRenderer = that._getDataRenderer();
-                for (var i = 0; i < len; i++) {
-                    var d = data[i];
+                var inc = 0;
+                var dec = 0;
+                function guard(f) {
+                    return function() {
+                        inc++;
+                        try {
+                            return f.apply(this, arguments);
+                        } catch (err) {
+                            console.log('ERRR', err);
+                        } finally {
+                            dec++;
+                            if (inc === dec) {
+                                that.tileDrawn(canvas);
+                            }
+                        }
+                    };
+                }
+                L.Util.invokeEach(data, guard(function(i, d) {
+                    var dataRenderer = that._getDataRenderer();
                     dataRenderer.drawFeature(tilePoint, bbox, d, //
-                    function(error, ctx) {
+                    guard(function(error, ctx) {
                         if (error) {
                             that._handleRenderError(canvas, tilePoint, error);
                         } else if (ctx && ctx.image) {
@@ -936,9 +941,8 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
                             index.draw(ctx.image, //
                             ctx.anchor.x, ctx.anchor.y, d);
                         }
-                    });
-                }
-                that.tileDrawn(canvas);
+                    }));
+                }));
             }
             dataProvider.loadData(bbox, tilePoint, function(error, data) {
                 if (error) {
@@ -950,15 +954,12 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
                     that.tileDrawn(canvas);
                     return;
                 }
-
-                that._processor.render(function() {
-                    try {
-                        renderData(data);
-                    } catch (error) {
-                        that._handleRenderError(canvas, tilePoint, error);
-                        that.tileDrawn(canvas);
-                    }
-                });
+                try {
+                    renderData(data);
+                } catch (error) {
+                    that._handleRenderError(canvas, tilePoint, error);
+                    that.tileDrawn(canvas);
+                }
             });
         },
 
