@@ -923,12 +923,27 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
             var bbox = this._getTileBoundingBox(tilePoint);
             var dataProvider = this._getDataProvider();
             function renderData(data) {
-                var len = data ? data.length : 0;
-                var dataRenderer = that._getDataRenderer();
-                for (var i = 0; i < len; i++) {
-                    var d = data[i];
+                var inc = 0;
+                var dec = 0;
+                function guard(f) {
+                    return function() {
+                        inc++;
+                        try {
+                            return f.apply(this, arguments);
+                        } catch (err) {
+                            console.log('ERRR', err);
+                        } finally {
+                            dec++;
+                            if (inc === dec) {
+                                that.tileDrawn(canvas);
+                            }
+                        }
+                    };
+                }
+                L.Util.invokeEach(data, guard(function(i, d) {
+                    var dataRenderer = that._getDataRenderer();
                     dataRenderer.drawFeature(tilePoint, bbox, d, //
-                    function(error, ctx) {
+                    guard(function(error, ctx) {
                         if (error) {
                             that._handleRenderError(canvas, tilePoint, error);
                         } else if (ctx && ctx.image) {
@@ -936,9 +951,8 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
                             index.draw(ctx.image, //
                             ctx.anchor.x, ctx.anchor.y, d);
                         }
-                    });
-                }
-                that.tileDrawn(canvas);
+                    }));
+                }));
             }
             dataProvider.loadData(bbox, tilePoint, function(error, data) {
                 if (error) {
