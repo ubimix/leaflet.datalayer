@@ -746,47 +746,14 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
 
         /** Activates/deactivates event management for this layer. */
         _initEvents : function(onoff) {
-            var pane = this._getDataLayersPane();
-            L.DomEvent[onoff](pane, 'click', this._onMouseClick, this);
-            var events = [ 'mouseover', 'mouseout', 'mousemove' ];
-            for (var i = 0; i < events.length; i++) {
-                L.DomEvent[onoff](pane, events[i], this._fireMouseEvent, this);
-            }
-        },
-
-        /** Handles mouse click events */
-        _onMouseClick : function(e) {
-            if (this._map.dragging && this._map.dragging.moved()) {
-                return;
-            }
-            this._fireMouseEvent(e);
-        },
-
-        /** Fires mouse events for this layer */
-        _fireMouseEvent : function(e) {
-            // if (!this.hasEventListeners(e.type)) {
-            // return;
-            // }
-            var map = this._map;
-            var containerPoint = map.mouseEventToContainerPoint(e);
-            var layerPoint = map.containerPointToLayerPoint(containerPoint);
-            var latlng = map.layerPointToLatLng(layerPoint);
-            var event = {
-                latlng : latlng,
-                layerPoint : layerPoint.round(),
-                containerPoint : containerPoint,
-                originalEvent : e
-            };
-            var cancel = false;
-            if (e.type === 'mouseover' || e.type === 'mouseout'
-                    || e.type === 'mousemove') {
-                cancel = this._move(event);
-            } else if (e.type === 'click') {
-                cancel = this._click(event);
-            }
-            if (cancel) {
-                L.DomEvent.stopPropagation(e);
-            }
+            var events = 'click mouseover mouseout mousemove';
+            this._map.on(events, function(e) {
+                if (e.type === 'click') {
+                    this._click(e);
+                } else {
+                    this._move(e);
+                }
+            }, this);
         },
 
         /** Map click handler */
@@ -919,27 +886,30 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
          */
         _redrawTile : function(canvas) {
             var that = this;
+            var index = that._getCanvasIndex(canvas, true);
             var tilePoint = canvas._tilePoint;
             var bbox = this._getTileBoundingBox(tilePoint);
             var dataProvider = this._getDataProvider();
-            function renderData(data) {
-                var inc = 0;
-                var dec = 0;
-                function guard(f) {
-                    return function() {
-                        inc++;
-                        try {
-                            return f.apply(this, arguments);
-                        } catch (err) {
-                            console.log('ERRR', err);
-                        } finally {
-                            dec++;
-                            if (inc === dec) {
-                                that.tileDrawn(canvas);
-                            }
+
+            var inc = 0;
+            var dec = 0;
+            function guard(f) {
+                return function() {
+                    inc++;
+                    try {
+                        return f.apply(this, arguments);
+                    } catch (err) {
+                        console.log('ERRR', err);
+                    } finally {
+                        dec++;
+                        if (inc === dec) {
+                            that.tileDrawn(canvas);
                         }
-                    };
-                }
+                    }
+                };
+            }
+
+            function renderData(data) {
                 L.Util.invokeEach(data, guard(function(i, d) {
                     var dataRenderer = that._getDataRenderer();
                     dataRenderer.drawFeature(tilePoint, bbox, d, //
@@ -947,33 +917,31 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
                         if (error) {
                             that._handleRenderError(canvas, tilePoint, error);
                         } else if (ctx && ctx.image) {
-                            var index = that._getCanvasIndex(canvas, true);
                             index.draw(ctx.image, //
                             ctx.anchor.x, ctx.anchor.y, d);
                         }
                     }));
                 }));
             }
-            dataProvider.loadData(bbox, tilePoint, function(error, data) {
+            dataProvider.loadData(bbox, tilePoint, guard(function(error, data) {
                 if (error) {
                     that._handleRenderError(canvas, tilePoint, error);
-                    that.tileDrawn(canvas);
+                    // that.tileDrawn(canvas);
                     return;
                 }
                 if (!data || data.length === 0) {
-                    that.tileDrawn(canvas);
+                    // that.tileDrawn(canvas);
                     return;
                 }
-
                 that._processor.render(function() {
                     try {
                         renderData(data);
                     } catch (error) {
                         that._handleRenderError(canvas, tilePoint, error);
-                        that.tileDrawn(canvas);
+                        // that.tileDrawn(canvas);
                     }
                 });
-            });
+            }));
         },
 
         /**
@@ -1048,7 +1016,7 @@ define([ 'leaflet', 'rbush' ], function(L, rbush) {
          * canvas.
          */
         _getCanvasIndex : function(canvas, create) {
-            if (!canvas._index && create) {
+            if (!canvas._index || create) {
                 var maskIndex = this.options.maskIndex || {};
                 canvas._index = new IndexedCanvas({
                     canvas : canvas,
