@@ -3,17 +3,17 @@
 var P = {
     defer : Deferred,
     then : function(onResolve, onReject) {
-        var deferred = this.defer();
+        var deferred = P.defer();
         deferred.resolve();
         return deferred.then(onResolve, onReject);
     },
     reject : function(value) {
-        var deferred = this.defer();
+        var deferred = P.defer();
         deferred.reject(value);
         return deferred;
     },
     resolve : function(value) {
-        var deferred = this.defer();
+        var deferred = P.defer();
         deferred.resolve(value);
         return deferred;
     }
@@ -21,7 +21,7 @@ var P = {
 function Deferred() {
     var slots = [];
     var done;
-    var that = this || {};
+    var that = {};
     that.then = function(onResolve, onReject) {
         var next = new Deferred();
         slots.push({
@@ -86,6 +86,9 @@ function Deferred() {
         done();
     }
 }
+// Deferred.nextTick = function(action) {
+// action();
+// }
 Deferred.nextTick = function(action) {
     if (typeof process !== 'undefined' && process.nextTick) {
         Deferred.nextTick = process.nextTick;

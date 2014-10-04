@@ -1,6 +1,8 @@
 var L = require('leaflet');
 var rbush = require('rbush');
 var IDataProvider = require('./IDataProvider');
+var DataUtils = require('./DataUtils');
+var P = require('./P');
 
 /**
  * A simple data provider synchronously indexing the given data using an RTree
@@ -22,10 +24,10 @@ var SimpleDataProvider = IDataProvider.extend({
     /**
      * Loads and returns indexed data contained in the specified bounding box.
      */
-    loadData : function(bbox, tilePoint, callback) {
+    loadData : function(bbox, tilePoint) {
         var that = this;
-        var results = that._searchInBbox(bbox);
-        callback(null, results);
+        var data = that._searchInBbox(bbox);
+        return P.resolve(data);
     },
 
     /** Indexes the specified data array using a RTree index. */
@@ -79,7 +81,7 @@ var SimpleDataProvider = IDataProvider.extend({
      * Returns a L.LatLngBounds instance defining a bounding box ([south, west,
      * north, east]) for the specified object.
      */
-    _getBoundingBox : IDataProvider.getGeoJsonBoundingBox,
+    _getBoundingBox : DataUtils.getGeoJsonBoundingBox,
 
 });
 

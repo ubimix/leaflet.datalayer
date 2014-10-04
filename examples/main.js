@@ -84,7 +84,7 @@ function main(id) {
          * markers when user zooms in. It is called only once for each type of
          * resources for each zoom level.
          */
-        _drawResourceIcon : function(resource, callback) {
+        _drawResourceIcon : function(resource) {
             var radius = this._getRadius();
             var lineWidth = radius < MyMarkerRenderer.thresholdSize ? 1 : 2;
             var type = this._getResourceType(resource);
@@ -107,10 +107,10 @@ function main(id) {
                 g.lineWidth = lineWidth;
                 g.strokeStyle = stroke;
                 g.stroke();
-                callback(null, {
+                return {
                     image : canvas,
                     anchor : L.point(width / 2, height / 2)
-                });
+                };
             } else {
                 g.fillStyle = color;
                 g.strokeStyle = stroke;
@@ -141,11 +141,10 @@ function main(id) {
                 g.arc(x, y, r, 0, 2 * Math.PI, false);
                 g.strokeStyle = stroke;
                 g.stroke();
-
-                callback(null, {
+                return {
                     image : canvas,
                     anchor : L.point(width / 2, height - lineWidth * 2)
-                });
+                };
             }
         },
         /**

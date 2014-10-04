@@ -1,6 +1,7 @@
 var L = require('leaflet');
 var IDataRenderer = require('./IDataRenderer');
-var IDataProvider = require('./IDataProvider');
+var DataUtils = require('./DataUtils');
+var P = require('./P');
 
 /**
  * A common interface visualizing data on canvas.
@@ -25,10 +26,9 @@ var MarkersRenderer = IDataRenderer.extend({
      *         or Canvas instance with the drawn result b) 'anchor' a L.Point
      *         object defining position on the returned image on the tile;
      */
-    drawFeature : function(tilePoint, bbox, resource, callback) {
+    drawFeature : function(tilePoint, bbox, resource) {
         var coords = this._getCoordinates(resource);
         if (!coords) {
-            callback(null, null);
             return;
         }
         var p = this._map.project(coords);
@@ -37,19 +37,19 @@ var MarkersRenderer = IDataRenderer.extend({
 
         var x = Math.round(p.x - s.x);
         var y = Math.round(p.y - s.y);
-        return this._loadIconInfo(resource, function(err, icon) {
-            if (err) {
-                return callback(err);
-            }
+        var anchor = L.point(x, y);
+        var that = this;
+        return P.then(function() {
+            return that._loadIconInfo(resource);
+        }).then(function(icon) {
             icon = icon || {};
-            var anchor = L.point(x, y);
             if (icon.anchor) {
                 anchor._subtract(icon.anchor);
             }
-            callback(null, {
+            return {
                 image : icon.image,
                 anchor : anchor
-            });
+            };
         });
     },
 
@@ -63,7 +63,7 @@ var MarkersRenderer = IDataRenderer.extend({
      * resource.
      */
     _getCoordinates : function(d) {
-        var bbox = IDataProvider.getGeoJsonBoundingBox(d);
+        var bbox = DataUtils.getGeoJsonBoundingBox(d);
         if (!bbox)
             return null;
         return bbox.getCenter();
@@ -71,26 +71,25 @@ var MarkersRenderer = IDataRenderer.extend({
 
     /**
      * Loads an icon corresponding to the specified resource and returns this
-     * icon using the specified callback method.
+     * icon directly or with a promise.
      */
-    _loadIconInfo : function(resource, callback) {
-        try {
-            var type = this._getResourceType(resource);
-            var map = this._map;
-            var zoom = map.getZoom();
-            var indexKey = this._getResourceIconKey(resource, zoom);
-            var iconIndex = this._iconIndex = this._iconIndex || {};
-            var icon = iconIndex[indexKey];
-            if (icon) {
-                return callback(null, icon);
-            } else {
-                return this._drawResourceIcon(resource, function(err, icon) {
-                    iconIndex[indexKey] = icon;
-                    return callback(err, icon);
-                });
-            }
-        } catch (err) {
-            return callback(err);
+    _loadIconInfo : function(resource) {
+        var that = this;
+        var type = that._getResourceType(resource);
+        var map = that._map;
+        var zoom = map.getZoom();
+        var indexKey = that._getResourceIconKey(resource, zoom);
+        var iconIndex = that._iconIndex = that._iconIndex || {};
+        var icon = iconIndex[indexKey];
+        if (icon) {
+            return icon;
+        } else {
+            return P.then(function() {
+                return that._drawResourceIcon(resource);
+            }).then(function(icon) {
+                iconIndex[indexKey] = icon;
+                return icon;
+            });
         }
     },
 
@@ -143,7 +142,7 @@ var MarkersRenderer = IDataRenderer.extend({
      * a L.Point instance defining the position on the icon corresponding to the
      * resource coordinates
      */
-    _drawResourceIcon : function(resource, callback) {
+    _drawResourceIcon : function(resource) {
         var radius = this._getRadius();
         var canvas = document.createElement('canvas');
         var lineWidth = this._getVal('lineWidth', 1);
@@ -162,10 +161,10 @@ var MarkersRenderer = IDataRenderer.extend({
         width - lineWidth * 2, height - lineWidth * 2, radius * 0.6);
         g.fill();
         g.stroke();
-        return callback(null, {
+        return {
             image : canvas,
             anchor : L.point(width / 2, height)
-        });
+        };
     },
 
     /** Draws a simple marker */

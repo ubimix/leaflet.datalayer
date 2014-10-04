@@ -1,4 +1,5 @@
 var L = require('leaflet');
+var P = require('./P');
 
 /**
  * A common interface visualizing data on canvas.
@@ -28,13 +29,11 @@ var IDataRenderer = L.Class.extend({
      *         or Canvas instance with the drawn result b) 'anchor' a L.Point
      *         object defining position on the returned image on the tile;
      */
-    drawFeature : function(tilePoint, bbox, resource, callback) {
-        var error = null;
-        var result = {
+    drawFeature : function(tilePoint, bbox, resource) {
+        return P.resolve({
             image : null,
             anchor : L.point(0, 0)
-        };
-        callback(error, result);
+        });
     },
 
     // --------------------------------------------------------------------

@@ -2,6 +2,7 @@ var L = require('leaflet');
 var SimpleDataProvider = require('./SimpleDataProvider');
 var MarkersRenderer = require('./MarkersRenderer');
 var IndexedCanvas = require('./IndexedCanvas');
+var P = require('./P');
 
 /**
  * This layer draws data on canvas tiles. This class uses the following
@@ -249,51 +250,30 @@ var DataLayer = L.TileLayer.Canvas.extend({
         var bbox = this._getTileBoundingBox(tilePoint);
         var dataProvider = this._getDataProvider();
         function renderData(data) {
-            var inc = 0;
-            var dec = 0;
-            function guard(f) {
-                return function() {
-                    inc++;
-                    try {
-                        return f.apply(this, arguments);
-                    } catch (err) {
-                        console.log('ERRR', err);
-                    } finally {
-                        dec++;
-                        if (inc === dec) {
-                            that.tileDrawn(canvas);
-                        }
-                    }
-                };
-            }
-            L.Util.invokeEach(data, guard(function(i, d) {
-                var dataRenderer = that._getDataRenderer();
-                dataRenderer.drawFeature(tilePoint, bbox, d, //
-                guard(function(error, ctx) {
-                    if (error) {
-                        that._handleRenderError(canvas, tilePoint, error);
-                    } else if (ctx && ctx.image) {
-                        var index = that._getCanvasIndex(canvas, true);
-                        index.draw(ctx.image, //
-                        ctx.anchor.x, ctx.anchor.y, d);
+            var index = that._getCanvasIndex(canvas, true);
+            var dataRenderer = that._getDataRenderer();
+            var promises = [];
+            L.Util.invokeEach(data, function(i, d) {
+                promises.push(P.then(function() {
+                    return dataRenderer.drawFeature(tilePoint, bbox, d);
+                }).then(function(ctx) {
+                    if (ctx && ctx.image) {
+                        index.draw(ctx.image, ctx.anchor.x, ctx.anchor.y, d);
                     }
                 }));
-            }));
+            });
+            return P.all(promises);
         }
-        dataProvider.loadData(bbox, tilePoint, function(error, data) {
-            if (error) {
-                that._handleRenderError(canvas, tilePoint, error);
-                that.tileDrawn(canvas);
-                return;
-            }
-            if (!data || data.length === 0) {
-                that.tileDrawn(canvas);
-                return;
-            }
+        P.then(function() {
+            return dataProvider.loadData(bbox, tilePoint);
+        }).then(function(data) {
+            return renderData(data);
+        }).then(function() {
+            that.tileDrawn(canvas);
+        }, function(err) {
             try {
-                renderData(data);
-            } catch (err) {
                 that._handleRenderError(canvas, tilePoint, err);
+            } finally {
                 that.tileDrawn(canvas);
             }
         });
