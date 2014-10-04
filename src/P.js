@@ -72,7 +72,7 @@ function Deferred() {
                     var next = slot.next;
                     try {
                         result = action(slot);
-                        if (result && typeof result.then === 'function') {
+                        if (Deferred.isThennable(result)) {
                             result.then(next.resolve, next.reject);
                         } else {
                             next.resolve(result);
@@ -86,6 +86,9 @@ function Deferred() {
         done();
     }
 }
+Deferred.isThennable = function(result) {
+    return result && typeof result.then === 'function';
+};
 // Deferred.nextTick = function(action) {
 // action();
 // }
@@ -99,6 +102,7 @@ Deferred.nextTick = function(action) {
     }
     Deferred.nextTick(action); // It is not an infinite recursion!
 };
+P.isPromise = Deferred.isThennable;
 P.all = function(list) {
     var deferred = P.defer();
     var len = list ? list.length : 0;
