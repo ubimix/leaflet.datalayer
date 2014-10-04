@@ -24,7 +24,7 @@ var DataLayer = L.TileLayer.Canvas.extend({
         pointerCursor : true,
 
         // Asynchronous tiles drawing
-        async : true,
+        async : false,
 
         // Don't reuse canvas tiles
         reuseTiles : false,

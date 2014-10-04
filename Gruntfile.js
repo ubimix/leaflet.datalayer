@@ -23,7 +23,7 @@ module.exports = function(grunt) {
                 libraryTarget : 'umd'
             },
             externals : [ {
-                'leaflet' : 'L'
+                'leaflet' : 'leaflet'
             } ],
             resolve : {
                 modulesDirectories : [ "node_modules" ],
