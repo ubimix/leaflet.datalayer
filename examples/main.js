@@ -37,7 +37,7 @@ function main(id) {
      * Custom data renderer. This class draws small circles for low zoom levels
      * and colored markers for higher zooms.
      */
-    var MyMarkerRenderer = LeafletDataLayer.MarkersRenderer.extend({
+    var MyMarkerRenderer = L.DataLayer.MarkersRenderer.extend({
         statics : {
             thresholdSize : 8
         },
@@ -84,9 +84,10 @@ function main(id) {
          * markers when user zooms in. It is called only once for each type of
          * resources for each zoom level.
          */
-        _drawIcon : function(type) {
+        _drawResourceIcon : function(resource, callback) {
             var radius = this._getRadius();
             var lineWidth = radius < MyMarkerRenderer.thresholdSize ? 1 : 2;
+            var type = this._getResourceType(resource);
             var color = this._getColor(type);
             var stroke = 'white';
             var canvas = document.createElement('canvas');
@@ -106,10 +107,10 @@ function main(id) {
                 g.lineWidth = lineWidth;
                 g.strokeStyle = stroke;
                 g.stroke();
-                return {
+                callback(null, {
                     image : canvas,
                     anchor : L.point(width / 2, height / 2)
-                };
+                });
             } else {
                 g.fillStyle = color;
                 g.strokeStyle = stroke;
@@ -141,10 +142,10 @@ function main(id) {
                 g.strokeStyle = stroke;
                 g.stroke();
 
-                return {
+                callback(null, {
                     image : canvas,
                     anchor : L.point(width / 2, height - lineWidth * 2)
-                };
+                });
             }
         },
         /**
@@ -175,10 +176,10 @@ function main(id) {
     var dataRenderer = new MyMarkerRenderer();
 
     // Optional instantiation of a data provider.
-    var dataProvider = new LeafletDataLayer.SimpleDataProvider({});
+    var dataProvider = new L.DataLayer.SimpleDataProvider({});
     dataProvider.setData(data);
     // Data layer instantiation
-    var dataLayer = new LeafletDataLayer({
+    var dataLayer = new L.DataLayer({
         dataRenderer : dataRenderer,
         dataProvider : dataProvider
     });
