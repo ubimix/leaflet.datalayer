@@ -40,7 +40,9 @@ IndexedCanvas.prototype = {
         this._addToCanvasMask(image, x, y, data);
     },
 
-    /** Returns data associated with the specified position on the canvas. */
+    /**
+     * Returns data associated with the specified position on the canvas.
+     */
     getData : function(x, y) {
         var maskX = this._getMaskX(x);
         var maskY = this._getMaskY(y);
@@ -99,7 +101,9 @@ IndexedCanvas.prototype = {
         return mask;
     },
 
-    /** Returns a unique key of the specified image. */
+    /**
+     * Returns a unique key of the specified image.
+     */
     _getImageKey : function(image) {
         if (!image._imageId) {
             IndexedCanvas._id_counter = (IndexedCanvas._id_counter || 0) + 1;
@@ -142,17 +146,25 @@ IndexedCanvas.prototype = {
         return mask;
     },
 
+    /**
+     * Creates and returns a new canvas instance. Could be overloaded in
+     * subclasses.
+     */
     _newCanvas : function() {
         return document.createElement('canvas');
     },
 
-    /** Transforms an X coordinate on canvas to X coordinate in the mask. */
+    /**
+     * Transforms a X coordinate on canvas to X coordinate in the mask.
+     */
     _getMaskX : function(x) {
         var resolutionX = this.options.resolutionX;
         return Math.round(x / resolutionX);
     },
 
-    /** Transforms a Y coordinate on canvas to Y coordinate in the mask. */
+    /**
+     * Transforms Y coordinate on canvas to Y coordinate in the mask.
+     */
     _getMaskY : function(y) {
         var resolutionY = this.options.resolutionY;
         return Math.round(y / resolutionY);

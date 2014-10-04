@@ -1,110 +1,41 @@
-// A very simple promise implementation without external dependencies.
+// A promise wrapper providing a switchable interface for promise implementations.
 // MIT license. (c) Ubimix (c) Mikhail Kotelnikov
-var P = {
-    defer : Deferred,
-    then : function(onResolve, onReject) {
-        var deferred = P.defer();
-        deferred.resolve();
-        return deferred.then(onResolve, onReject);
-    },
-    reject : function(value) {
-        var deferred = P.defer();
-        deferred.reject(value);
-        return deferred;
-    },
-    resolve : function(value) {
-        var deferred = P.defer();
-        deferred.resolve(value);
-        return deferred;
-    }
-};
-function Deferred() {
-    var slots = [];
-    var done;
-    var that = {};
-    that.then = function(onResolve, onReject) {
-        var next = new Deferred();
-        slots.push({
-            onResolve : onResolve,
-            onReject : onReject,
-            next : next
-        });
-        if (done) {
-            done();
-        }
-        return next;
-    };
-    that.resolve = function(result) {
-        finish(function(slot) {
-            if (slot.onResolve) {
-                return slot.onResolve(result);
-            } else {
-                return result;
-            }
-        });
-    };
-    that.reject = function(err) {
-        finish(function(slot) {
-            if (slot.onReject) {
-                return slot.onReject(err);
-            } else {
-                throw err;
-            }
-        });
-    };
-    return that;
-    function finish(action) {
-        that.resolve = that.reject = function() {
-            throw new Error('This promise is already resolved.');
-        };
-        var scheduled = false;
-        done = function() {
-            if (scheduled) {
-                return;
-            }
-            scheduled = true;
-            Deferred.nextTick(function() {
-                scheduled = false;
-                var prevSlots = slots;
-                slots = [];
-                for (var i = 0; i < prevSlots.length; i++) {
-                    var slot = prevSlots[i];
-                    var next = slot.next;
-                    try {
-                        result = action(slot);
-                        if (Deferred.isThennable(result)) {
-                            result.then(next.resolve, next.reject);
-                        } else {
-                            next.resolve(result);
-                        }
-                    } catch (err) {
-                        next.reject(err);
-                    }
-                }
-            });
-        };
-        done();
-    }
+module.exports = P;
+function P(value) {
+    return P.resolve(value);
 }
-Deferred.isThennable = function(result) {
+P.defer = function() {
+    var ayepromise = require('ayepromise');
+    P.defer = ayepromise.defer;
+    return P.defer();
+};
+P.then = function(onResolve, onReject) {
+    var deferred = P.defer();
+    deferred.resolve();
+    return deferred.promise.then(onResolve, onReject);
+};
+P.reject = function(value) {
+    var deferred = P.defer();
+    deferred.reject(value);
+    return deferred.promise;
+};
+P.resolve = function(value) {
+    var deferred = P.defer();
+    deferred.resolve(value);
+    return deferred.promise;
+};
+P.isPromise = function(result) {
     return result && typeof result.then === 'function';
 };
-// Deferred.nextTick = function(action) {
-// action();
-// }
-Deferred.nextTick = function(action) {
-    if (typeof process !== 'undefined' && process.nextTick) {
-        Deferred.nextTick = process.nextTick;
-    } else {
-        Deferred.nextTick = function(action) {
-            setTimeout(action, 0);
-        };
-    }
-    Deferred.nextTick(action); // It is not an infinite recursion!
+P._isArray = function(obj) {
+    P._isArray = (Array.isArray || function(obj) {
+        return Object.prototype.toString.call(obj) === '[object Array]';
+    });
+    return P._isArray(obj);
 };
-P.isPromise = Deferred.isThennable;
 P.all = function(list) {
     var deferred = P.defer();
+    list = P._isArray(list) ? list : arguments;
     var len = list ? list.length : 0;
     var results = [];
     function end(error, result) {
@@ -129,7 +60,7 @@ P.all = function(list) {
     if (len === 0) {
         deferred.resolve(results);
     }
-    return deferred;
+    return deferred.promise;
 };
 P.nresolver = function(deferred) {
     return function(error, value) {
@@ -155,4 +86,3 @@ P.ninvoke = function(object, name /* ...args */) {
     }
     return deferred.promise;
 };
-module.exports = P;

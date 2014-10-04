@@ -39,20 +39,11 @@ var DataLayer = L.TileLayer.Canvas.extend({
      * Initializes this layer
      */
     initialize : function(options) {
-        // Not used anymore. Deprecated. To remove.
-        this._canvasLayer = this;
         options.fillOpacity = options.opacity;
         delete options.opacity;
         var url = null;
         L.TileLayer.Canvas.prototype.initialize.apply(this, url, options);
         L.setOptions(this, options);
-        // Use a global index for image masks used by this layer.
-        // This index accelerates mapping of individual rendered objects
-        // but it is useful only if multiple objects have the same visual
-        // representation on the map.
-        if (this.options.reuseMasks) {
-            this.options.maskIndex = this.options.maskIndex || {};
-        }
         if (this.options.data) {
             this.setData(this.options.data);
         }
@@ -249,26 +240,25 @@ var DataLayer = L.TileLayer.Canvas.extend({
         var tilePoint = canvas._tilePoint;
         var bbox = this._getTileBoundingBox(tilePoint);
         var dataProvider = this._getDataProvider();
-        function renderData(data) {
-            var index = that._getCanvasIndex(canvas, true);
-            var dataRenderer = that._getDataRenderer();
-            var promises = [];
-            L.Util.invokeEach(data, function(i, d) {
-                promises.push(P.then(function() {
-                    return dataRenderer.drawFeature(tilePoint, bbox, d);
-                }).then(function(ctx) {
-                    if (ctx && ctx.image) {
-                        index.draw(ctx.image, ctx.anchor.x, ctx.anchor.y, d);
-                    }
-                }));
+        var dataRenderer = that._getDataRenderer();
+        return P.then(function() {
+            return dataProvider.loadData({
+                tilePoint : tilePoint,
+                bbox : bbox,
             });
-            return P.all(promises);
-        }
-        P.then(function() {
-            return dataProvider.loadData(bbox, tilePoint);
         }).then(function(data) {
-            return renderData(data);
-        }).then(function() {
+            var tileSize = that._getTileSize();
+            var zoom = that._map.getZoom();
+            return dataRenderer.renderData({
+                tilePoint : tilePoint,
+                tileSize : tileSize,
+                zoom : zoom,
+                canvas : canvas,
+                data : data,
+                map : that._map
+            });
+        }).then(function(context) {
+            canvas._index = context;
             that.tileDrawn(canvas);
         }, function(err) {
             try {
@@ -301,10 +291,12 @@ var DataLayer = L.TileLayer.Canvas.extend({
         var sePoint = nwPoint.add(new L.Point(tileSize, tileSize));
         var dataRenderer = this._getDataRenderer();
         var bufferSize = dataRenderer.getBufferZoneSize();
+        bufferSize = L.point(bufferSize);
         nwPoint = nwPoint.subtract(bufferSize);
         sePoint = sePoint.add(bufferSize);
-        var bbox = new L.LatLngBounds(that._map.unproject(sePoint), that._map
-                .unproject(nwPoint));
+        var nw = that._map.unproject(nwPoint);
+        var se = that._map.unproject(sePoint);
+        var bbox = new L.LatLngBounds(se, nw);
         return bbox;
     },
 
@@ -314,7 +306,10 @@ var DataLayer = L.TileLayer.Canvas.extend({
      */
     _getDataRenderer : function() {
         if (!this.options.dataRenderer) {
-            this.options.dataRenderer = new MarkersRenderer();
+            this.options.dataRenderer = new MarkersRenderer({
+                map : this._map,
+                layer : this
+            });
         }
         return this.options.dataRenderer;
     },
@@ -334,7 +329,7 @@ var DataLayer = L.TileLayer.Canvas.extend({
         var canvas = this._tiles[key];
         var data;
         if (canvas) {
-            var index = this._getCanvasIndex(canvas, false);
+            var index = canvas._index;
             if (index) {
                 var canvasX = point.x % tileSize;
                 var canvasY = point.y % tileSize;
@@ -343,20 +338,6 @@ var DataLayer = L.TileLayer.Canvas.extend({
         }
         e.data = data;
         return e;
-    },
-
-    /**
-     * Returns an IndexedCanvas instance associated with the specified canvas.
-     */
-    _getCanvasIndex : function(canvas, create) {
-        if (!canvas._index && create) {
-            var maskIndex = this.options.maskIndex || {};
-            canvas._index = new IndexedCanvas({
-                canvas : canvas,
-                maskIndex : maskIndex
-            });
-        }
-        return canvas._index;
     },
 
 });

@@ -3,7 +3,7 @@
   "version": "0.0.3",
   "description": "Leaflet data layer rendering information on canvas tiles",
   "homepage": "https://github.com/ubimix/leaflet.datalayer",
-  "appname" : "leaflet.datalayer",
+  "appname": "leaflet.datalayer",
   "licenses": [
     {
       "type": "MIT"
@@ -22,7 +22,8 @@
     "grunt-mocha-test": "^0.12.1",
     "webpack": "^1.4.4",
     "webpack-dev-server": "^1.6.5",
-    "grunt-webpack": "^1.0.8"
+    "grunt-webpack": "^1.0.8",
+    "ayepromise": "*"
   },
   "devDependencies": {
     "mocha": "*",
@@ -33,7 +34,9 @@
     "grunt-contrib-concat": "^0.4.0",
     "grunt-webpack": "~1.0.7",
     "grunt-mocha-test": "^0.11.0",
-    "grunt-bump": "^0.0.14"
+    "grunt-bump": "^0.0.14",
+    "promises-aplus-tests": "*",
+    "grunt-contrib-watch": "^0.6.1"
   },
   "scripts": {
     "start": "node examples/server.js"

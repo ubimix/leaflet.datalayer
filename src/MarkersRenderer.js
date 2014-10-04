@@ -1,19 +1,28 @@
 var L = require('leaflet');
-var IDataRenderer = require('./IDataRenderer');
+var DataRenderer = require('./DataRenderer');
 var DataUtils = require('./DataUtils');
 var P = require('./P');
 
 /**
  * A common interface visualizing data on canvas.
  */
-var MarkersRenderer = IDataRenderer.extend({
+function MarkersRenderer(options) {
+    this.initialize(options);
+}
+var MarkersRenderer = DataRenderer.extend({
+
+    /** Initializes fields of this object. */
+    initialize : function() {
+        DataRenderer.prototype.initialize.apply(this, arguments);
+        this._markerCache = {};
+    },
 
     /**
      * Returns a buffer zone size (in pixels) around each tile.
      */
     getBufferZoneSize : function() {
         var r = this._getRadius() * 2.5;
-        return L.point(r, r);
+        return [ r, r ];
     },
 
     /**
@@ -26,31 +35,48 @@ var MarkersRenderer = IDataRenderer.extend({
      *         or Canvas instance with the drawn result b) 'anchor' a L.Point
      *         object defining position on the returned image on the tile;
      */
-    drawFeature : function(tilePoint, bbox, resource) {
-        var coords = this._getCoordinates(resource);
-        if (!coords) {
+    _drawFeature : function(resource, context) {
+        var tilePoint = context.options.tilePoint;
+        var anchor = this._getPositionOnTile(resource, context);
+        if (!anchor)
+            return;
+        var cacheKey = this._getMarkerCacheKey(resource, context);
+        var marker;
+        if (cacheKey) {
+            marker = this._markerCache[cacheKey];
+        }
+        if (!marker) {
+            marker = this._newResourceMarker(resource, context);
+            if (marker && marker.image && cacheKey) {
+                this._markerCache[cacheKey] = marker;
+            }
+        }
+        if (marker && marker.image) {
+            var markerAnchor = L.point(marker.anchor);
+            var pos = anchor.subtract(markerAnchor);
+            context.draw(marker.image, pos.x, pos.y, resource);
+        }
+    },
+
+    /**
+     * Returns position (in pixels) of the specified geographic point on the
+     * canvas tile.
+     */
+    _getPositionOnTile : function(resource, context) {
+        var latlng = this._getCoordinates(resource);
+        if (!latlng) {
             return;
         }
-        var p = this._map.project(coords);
-        var tileSize = this._layer._getTileSize();
+        var map = this._map;
+        var layer = this._layer;
+        var tileSize = context.options.tileSize;
+        var tilePoint = context.options.tilePoint;
+        var p = map.project(latlng);
         var s = tilePoint.multiplyBy(tileSize);
-
         var x = Math.round(p.x - s.x);
         var y = Math.round(p.y - s.y);
-        var anchor = L.point(x, y);
-        var that = this;
-        return P.then(function() {
-            return that._loadIconInfo(resource);
-        }).then(function(icon) {
-            icon = icon || {};
-            if (icon.anchor) {
-                anchor._subtract(icon.anchor);
-            }
-            return {
-                image : icon.image,
-                anchor : anchor
-            };
-        });
+        var result = L.point(x, y);
+        return result;
     },
 
     // -----------------------------------------------------------------
@@ -69,52 +95,9 @@ var MarkersRenderer = IDataRenderer.extend({
         return bbox.getCenter();
     },
 
-    /**
-     * Loads an icon corresponding to the specified resource and returns this
-     * icon directly or with a promise.
-     */
-    _loadIconInfo : function(resource) {
-        var that = this;
-        var type = that._getResourceType(resource);
-        var map = that._map;
-        var zoom = map.getZoom();
-        var indexKey = that._getResourceIconKey(resource, zoom);
-        var iconIndex = that._iconIndex = that._iconIndex || {};
-        var icon = iconIndex[indexKey];
-        if (icon) {
-            return icon;
-        } else {
-            return P.then(function() {
-                return that._drawResourceIcon(resource);
-            }).then(function(icon) {
-                iconIndex[indexKey] = icon;
-                return icon;
-            });
-        }
-    },
-
-    // --------------------------------------------------------------------
-
-    /** Returns an option value */
-    _getOptionValue : function(key) {
-        var val = this.options[key];
-        if (typeof val === 'function') {
-            var args = _.toArray(arguments);
-            args.splice(0, 1);
-            val = val.apply(this.options, args);
-        }
-        return val;
-    },
-
-    /** Returns an option value */
-    _getVal : function(key, defaultValue) {
-        return this._getOptionValue(key, this._map.getZoom()) || //
-        defaultValue;
-    },
-
     /** Get the radius of markers. */
     _getRadius : function(defaultValue) {
-        return this._getVal('radius', 16);
+        return this.options.radius || 16;
     },
 
     // --------------------------------------------------------------------
@@ -125,7 +108,8 @@ var MarkersRenderer = IDataRenderer.extend({
      * zoom level. This key is used to cache resource-specific icons for each
      * zoom level.
      */
-    _getResourceIconKey : function(resource, zoom) {
+    _getMarkerCacheKey : function(resource, context) {
+        var zoom = context.options.zoom;
         var type = this._getResourceType(resource);
         var indexKey = zoom + ':' + type;
         return indexKey;
@@ -142,19 +126,20 @@ var MarkersRenderer = IDataRenderer.extend({
      * a L.Point instance defining the position on the icon corresponding to the
      * resource coordinates
      */
-    _drawResourceIcon : function(resource) {
+    _newResourceMarker : function(resource, context) {
         var radius = this._getRadius();
         var canvas = document.createElement('canvas');
-        var lineWidth = this._getVal('lineWidth', 1);
+        var options = this._getRenderingOptions(resource, context);
+        var lineWidth = options.lineWidth || 0;
         var width = radius * 2;
         var height = radius * 2;
         canvas.height = height;
         canvas.width = width;
         radius -= lineWidth;
         var g = canvas.getContext('2d');
-        g.fillStyle = this._getVal('fillColor', 'white');
-        g.globalAlpha = this._getVal('fillOpacity', 1);
-        g.strokeStyle = this._getVal('lineColor', 'gray');
+        g.fillStyle = options.fillColor || 'white';
+        g.globalAlpha = options.fillOpacity || 1;
+        g.strokeStyle = options.lineColor || 'gray';
         g.lineWidth = lineWidth;
         g.lineCap = 'round';
         this._drawMarker(g, lineWidth, lineWidth, //
@@ -163,7 +148,7 @@ var MarkersRenderer = IDataRenderer.extend({
         g.stroke();
         return {
             image : canvas,
-            anchor : L.point(width / 2, height)
+            anchor : [ width / 2, height ]
         };
     },
 
@@ -194,6 +179,11 @@ var MarkersRenderer = IDataRenderer.extend({
         x + width / 2, y + 0);
         g.closePath();
     },
+
+    /** Returns rendering options specific for the given resource. */
+    _getRenderingOptions : function(resource, context) {
+        return {};
+    }
 });
 
 module.exports = MarkersRenderer;

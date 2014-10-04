@@ -54,7 +54,7 @@ describe('Promise', function() {
             return 'cde';
         };
         for (var i = 0; i < 10; i++) {
-            promises.push(deferred.then(action));
+            promises.push(deferred.promise.then(action));
         }
         var ok = false;
         P.all(promises).then(function(results) {

@@ -84,7 +84,7 @@ function main(id) {
          * markers when user zooms in. It is called only once for each type of
          * resources for each zoom level.
          */
-        _drawResourceIcon : function(resource) {
+        _newResourceMarker : function(resource, context) {
             var radius = this._getRadius();
             var lineWidth = radius < MyMarkerRenderer.thresholdSize ? 1 : 2;
             var type = this._getResourceType(resource);

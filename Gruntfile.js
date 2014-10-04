@@ -34,6 +34,19 @@ module.exports = function(grunt) {
     grunt.loadNpmTasks('grunt-webpack');
 
     // ----------------------------------------------------------------------
+    config.watch = {
+        scripts : {
+            files : sourceFiles,
+            tasks : [ 'webpack' ],
+            options : {
+                spawn : false,
+                interrupt : true,
+            },
+        },
+    };
+    grunt.loadNpmTasks('grunt-contrib-watch');
+
+    // ----------------------------------------------------------------------
     // Version bump
     grunt.loadNpmTasks('grunt-bump');
     config.bump = {
