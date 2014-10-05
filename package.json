@@ -23,7 +23,7 @@
     "webpack": "^1.4.4",
     "webpack-dev-server": "^1.6.5",
     "grunt-webpack": "^1.0.8",
-    "ayepromise": "*"
+    "pinkyswear": "*"
   },
   "devDependencies": {
     "mocha": "*",

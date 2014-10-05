@@ -5,8 +5,19 @@ function P(value) {
     return P.resolve(value);
 }
 P.defer = function() {
-    var ayepromise = require('ayepromise');
-    P.defer = ayepromise.defer;
+    var pinkyswear = require('pinkyswear');
+    P.defer = function() {
+        var p = pinkyswear();
+        return {
+            promise : p,
+            resolve : function(value) {
+                p(true, [ value ]);
+            },
+            reject : function(reason) {
+                p(false, [ reason ]);
+            }
+        };
+    };
     return P.defer();
 };
 P.then = function(onResolve, onReject) {
