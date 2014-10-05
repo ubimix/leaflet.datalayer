@@ -65,9 +65,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	DataLayer.IDataRenderer = __webpack_require__(4);
 	DataLayer.SimpleDataProvider = __webpack_require__(5);
 	DataLayer.MarkersRenderer = __webpack_require__(6);
-	DataLayer.IndexedCanvas = __webpack_require__(7);
-	DataLayer.P = DataLayer.Promise = L.Promise = __webpack_require__(8);
-	DataLayer.DataUtils = __webpack_require__(9);
+	DataLayer.IIndexedCanvas = __webpack_require__(7);
+	DataLayer.MaskIndexedCanvas = __webpack_require__(8);
+	DataLayer.P = DataLayer.Promise = L.Promise = __webpack_require__(9);
+	DataLayer.DataUtils = __webpack_require__(10);
 
 	module.exports = L.DataLayer = DataLayer;
 
@@ -85,8 +86,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	var L = __webpack_require__(1);
 	var SimpleDataProvider = __webpack_require__(5);
 	var MarkersRenderer = __webpack_require__(6);
-	var IndexedCanvas = __webpack_require__(7);
-	var P = __webpack_require__(8);
+	var P = __webpack_require__(9);
 
 	/**
 	 * This layer draws data on canvas tiles. This class uses the following
@@ -432,14 +432,14 @@ return /******/ (function(modules) { // webpackBootstrap
 /* 3 */
 /***/ function(module, exports, __webpack_require__) {
 
-	var P = __webpack_require__(8);
-	var Utils = __webpack_require__(9);
+	var P = __webpack_require__(9);
+	var Utils = __webpack_require__(10);
 
 	/**
 	 * A common interface providing data for individual tiles. Used to
 	 * synchronously/asynchronously load data to render on tiles.
 	 */
-	var IDataProvider = {
+	var IDataProvider = L.Class.extend({
 
 	    /**
 	     * This method loads and returns an array of objects to show on tile
@@ -458,7 +458,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	        return P.resolve([]);
 	    },
 
-	};
+	});
 
 	module.exports = IDataProvider;
 
@@ -467,9 +467,9 @@ return /******/ (function(modules) { // webpackBootstrap
 /***/ function(module, exports, __webpack_require__) {
 
 	var L = __webpack_require__(1);
-	var P = __webpack_require__(8);
-	var IndexedCanvas = __webpack_require__(7);
-	var DataUtils = __webpack_require__(9);
+	var P = __webpack_require__(9);
+	var MaskIndexedCanvas = __webpack_require__(8);
+	var DataUtils = __webpack_require__(10);
 
 	/**
 	 * Instances of this class used to visualizing data on canvas.
@@ -478,7 +478,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	    /** Constructor of this class; initializes internal fields. */
 	    initialize : function(options) {
-	        this.options = options || {};
+	        L.setOptions(this, options);
 	    },
 
 	    // -----------------------------------------------------------------------
@@ -486,7 +486,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	    /**
 	     * Renders data specified in the options and returns a promise with the
-	     * canvas context (an IndexedCanvas instance).
+	     * canvas context (an IIndexedCanvas instance).
 	     * 
 	     * @param options.data
 	     *            an array of objects to render on a canvas
@@ -549,13 +549,21 @@ return /******/ (function(modules) { // webpackBootstrap
 	    // -----------------------------------------------------------------------
 	    // Internal methods
 
-	    /** Creates and returns a canvas index (an IndexedCanvas instance). */
+	    /** Creates and returns a canvas index (an IIndexedCanvas instance). */
 	    _newCanvasContext : function(options) {
 	        options = DataUtils.extend({}, options, {
-	            maskIndex : this.options.maskIndex || {}
+	            maskIndex : this._getMaskIndex()
 	        });
-	        var index = new IndexedCanvas(options);
+	        var index = new MaskIndexedCanvas(options);
 	        return index;
+	    },
+
+	    /**
+	     * This method returns an index keeping images and their corresponding
+	     * masks.
+	     */
+	    _getMaskIndex : function() {
+	        return this.options.maskIndex;
 	    },
 
 	    // --------------------------------------------------------------------
@@ -585,16 +593,16 @@ return /******/ (function(modules) { // webpackBootstrap
 /***/ function(module, exports, __webpack_require__) {
 
 	var L = __webpack_require__(1);
-	var rbush = __webpack_require__(10);
+	var rbush = __webpack_require__(11);
 	var IDataProvider = __webpack_require__(3);
-	var DataUtils = __webpack_require__(9);
-	var P = __webpack_require__(8);
+	var DataUtils = __webpack_require__(10);
+	var P = __webpack_require__(9);
 
 	/**
 	 * A simple data provider synchronously indexing the given data using an RTree
 	 * index.
 	 */
-	var SimpleDataProvider = L.Class.extend({
+	var SimpleDataProvider = IDataProvider.extend({
 
 	    /** Initializes this object and indexes the initial data set. */
 	    initialize : function(options) {
@@ -688,15 +696,12 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	var L = __webpack_require__(1);
 	var DataRenderer = __webpack_require__(4);
-	var DataUtils = __webpack_require__(9);
-	var P = __webpack_require__(8);
+	var DataUtils = __webpack_require__(10);
+	var P = __webpack_require__(9);
 
 	/**
 	 * A common interface visualizing data on canvas.
 	 */
-	function MarkersRenderer(options) {
-	    this.initialize(options);
-	}
 	var MarkersRenderer = DataRenderer.extend({
 
 	    /** Initializes fields of this object. */
@@ -714,6 +719,23 @@ return /******/ (function(modules) { // webpackBootstrap
 	    },
 
 	    /**
+	     * Returns position (in pixels) of the specified geographic point on the
+	     * canvas tile.
+	     */
+	    _getPositionOnTile : function(latlng, context) {
+	        var map = this._map;
+	        var layer = this._layer;
+	        var tileSize = context.options.tileSize;
+	        var tilePoint = context.options.tilePoint;
+	        var p = map.project(latlng);
+	        var s = tilePoint.multiplyBy(tileSize);
+	        var x = Math.round(p.x - s.x);
+	        var y = Math.round(p.y - s.y);
+	        var result = L.point(x, y);
+	        return result;
+	    },
+
+	    /**
 	     * Draws the specified resource and returns an image with x/y position of
 	     * this image on the tile. If this method returns nothing (or a
 	     * <code>null</code> value) then nothing is drawn for the specified
@@ -724,10 +746,26 @@ return /******/ (function(modules) { // webpackBootstrap
 	     *         object defining position on the returned image on the tile;
 	     */
 	    _drawFeature : function(resource, context) {
+	        var geometry = resource.geometry;
+	        if (!geometry)
+	            return;
+	        console.log(this._getResourceType(resource), ' => ',
+	                resource.geometry.type);
+	        this._drawResourceMarker(resource, context);
+	    },
+
+	    /** Draws the specified resource as a marker */
+	    _drawResourceMarker : function(resource, context) {
 	        var tilePoint = context.options.tilePoint;
-	        var anchor = this._getPositionOnTile(resource, context);
+	        var latlng = this._getCoordinates(resource);
+	        if (!latlng) {
+	            return;
+	        }
+
+	        var anchor = this._getPositionOnTile(latlng, context);
 	        if (!anchor)
 	            return;
+
 	        var cacheKey = this._getMarkerCacheKey(resource, context);
 	        var marker;
 	        if (cacheKey) {
@@ -744,27 +782,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	            var pos = anchor.subtract(markerAnchor);
 	            context.draw(marker.image, pos.x, pos.y, resource);
 	        }
-	    },
-
-	    /**
-	     * Returns position (in pixels) of the specified geographic point on the
-	     * canvas tile.
-	     */
-	    _getPositionOnTile : function(resource, context) {
-	        var latlng = this._getCoordinates(resource);
-	        if (!latlng) {
-	            return;
-	        }
-	        var map = this._map;
-	        var layer = this._layer;
-	        var tileSize = context.options.tileSize;
-	        var tilePoint = context.options.tilePoint;
-	        var p = map.project(latlng);
-	        var s = tilePoint.multiplyBy(tileSize);
-	        var x = Math.round(p.x - s.x);
-	        var y = Math.round(p.y - s.y);
-	        var result = L.point(x, y);
-	        return result;
 	    },
 
 	    // -----------------------------------------------------------------
@@ -871,7 +888,15 @@ return /******/ (function(modules) { // webpackBootstrap
 	    /** Returns rendering options specific for the given resource. */
 	    _getRenderingOptions : function(resource, context) {
 	        return {};
-	    }
+	    },
+
+	    /**
+	     * This method returns an index keeping images and their corresponding
+	     * masks.
+	     */
+	    _getMaskIndex : function() {
+	        return this.options.maskIndex || {};
+	    },
 	});
 
 	module.exports = MarkersRenderer;
@@ -880,14 +905,66 @@ return /******/ (function(modules) { // webpackBootstrap
 /* 7 */
 /***/ function(module, exports, __webpack_require__) {
 
+	var L = __webpack_require__(1);
+
 	/**
 	 * This utility class allows to associate data with non-transparent pixels of
 	 * images drawn on canvas.
 	 */
-	function IndexedCanvas(options) {
-	    this.initialize(options);
-	}
-	IndexedCanvas.prototype = {
+	var IIndexedCanvas = L.Class.extend({
+
+	    /**
+	     * Initializes internal fields of this class.
+	     * 
+	     * @param options.canvas
+	     *            mandatory canvas object used to draw images
+	     */
+	    initialize : function(options) {
+	        L.setOptions(this, options);
+	        this._canvas = this.options.canvas;
+	    },
+
+	    /**
+	     * Draws the specified image in the given position on the underlying canvas.
+	     */
+	    draw : function(image, x, y, data) {
+	        // Draw the image on the canvas
+	        var g = this._canvas.getContext('2d');
+	        g.drawImage(image, x, y);
+	    },
+
+	    /**
+	     * Returns data associated with the specified position on the canvas. This
+	     * method should be overloaded in subclasses to return real values.
+	     */
+	    getData : function(x, y) {
+	        var result = null;
+	        return result;
+	    },
+
+	    /**
+	     * Removes all data from internal indexes and cleans up underlying canvas.
+	     */
+	    reset : function() {
+	        var g = this._canvas.getContext('2d');
+	        g.clearRect(0, 0, this._canvas.width, this._canvas.height);
+	    },
+	});
+
+	module.exports = IIndexedCanvas;
+
+/***/ },
+/* 8 */
+/***/ function(module, exports, __webpack_require__) {
+
+	var L = __webpack_require__(1);
+	var IIndexedCanvas = __webpack_require__(7);
+
+	/**
+	 * This utility class allows to associate data with non-transparent pixels of
+	 * images drawn on canvas.
+	 */
+	var MaskIndexedCanvas = IIndexedCanvas.extend({
 
 	    /**
 	     * Initializes internal fields of this class.
@@ -900,12 +977,11 @@ return /******/ (function(modules) { // webpackBootstrap
 	     *            (resolution = 4)
 	     */
 	    initialize : function(options) {
-	        this.options = options || {};
+	        IIndexedCanvas.prototype.initialize.apply(this, arguments);
 	        var resolution = this.options.resolution || 4;
 	        this.options.resolutionX = this.options.resolutionX || resolution;
 	        this.options.resolutionY = this.options.resolutionY || //
 	        this.options.resolutionX || resolution;
-	        this._canvas = this.options.canvas;
 	        this._maskWidth = this._getMaskX(this._canvas.width);
 	        this._maskHeight = this._getMaskY(this._canvas.height);
 	        this._dataIndex = {};
@@ -915,9 +991,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	     * Draws the specified image in the given position on the underlying canvas.
 	     */
 	    draw : function(image, x, y, data) {
-	        // Draw the image on the canvas
-	        var g = this._canvas.getContext('2d');
-	        g.drawImage(image, x, y);
+	        IIndexedCanvas.prototype.draw.apply(this, arguments);
 	        // Associate non-transparent pixels of the image with data
 	        this._addToCanvasMask(image, x, y, data);
 	    },
@@ -937,12 +1011,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	     * Removes all data from internal indexes and cleans up underlying canvas.
 	     */
 	    reset : function() {
+	        IIndexedCanvas.prototype.reset.apply(this, arguments);
 	        this._dataIndex = {};
-	        if (this._maskIndex) {
-	            this._maskIndex = {};
-	        }
-	        var g = this._canvas.getContext('2d');
-	        g.clearRect(0, 0, this._canvas.width, this._canvas.height);
 	    },
 
 	    // ------------------------------------------------------------------
@@ -974,6 +1044,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	     */
 	    _getImageMask : function(image) {
 	        var maskIndex = this._getImageMaskIndex();
+	        if (!maskIndex) {
+	            return this._buildImageMask(image);
+	        }
 	        var imageId = this._getImageKey(image);
 	        var mask = maskIndex[imageId];
 	        if (!mask) {
@@ -987,11 +1060,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	     * Returns a unique key of the specified image.
 	     */
 	    _getImageKey : function(image) {
-	        if (!image._imageId) {
-	            IndexedCanvas._id_counter = (IndexedCanvas._id_counter || 0) + 1;
-	            image._imageId = 'image-' + IndexedCanvas._id_counter;
-	        }
-	        return image._imageId;
+	        return L.stamp(image);
 	    },
 
 	    /**
@@ -1000,10 +1069,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	     * image masks.
 	     */
 	    _getImageMaskIndex : function() {
-	        if (this.options.maskIndex)
-	            return this.options.maskIndex;
-	        this._maskIndex = this._maskIndex || {};
-	        return this._maskIndex;
+	        return this.options.maskIndex;
 	    },
 
 	    /** Creates and returns an image mask. */
@@ -1019,7 +1085,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	        var mask = new Array(image.width * image.height);
 	        for (var y = 0; y < image.height; y++) {
 	            for (var x = 0; x < image.width; x++) {
-	                var idx = (y * image.width + x) * 4 + 3; // Alpha channel
+	                var idx = (y * image.width + x) * 4 + 3; // Alpha
+	                // channel
 	                var maskX = this._getMaskX(x);
 	                var maskY = this._getMaskY(y);
 	                mask[maskY * maskWidth + maskX] = data[idx] ? 1 : 0;
@@ -1051,12 +1118,12 @@ return /******/ (function(modules) { // webpackBootstrap
 	        var resolutionY = this.options.resolutionY;
 	        return Math.round(y / resolutionY);
 	    }
-	};
+	});
 
-	module.exports = IndexedCanvas;
+	module.exports = MaskIndexedCanvas;
 
 /***/ },
-/* 8 */
+/* 9 */
 /***/ function(module, exports, __webpack_require__) {
 
 	// A promise wrapper providing a switchable interface for promise implementations.
@@ -1066,9 +1133,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	    return P.resolve(value);
 	}
 	P.defer = function() {
-	    var pinkyswear = __webpack_require__(11);
+	    var pinkyswear = __webpack_require__(12);
 	    P.defer = function() {
-	        
 	        var p = pinkyswear();
 	        return {
 	            promise : p,
@@ -1162,7 +1228,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 
 /***/ },
-/* 9 */
+/* 10 */
 /***/ function(module, exports, __webpack_require__) {
 
 	var L = __webpack_require__(1);
@@ -1224,7 +1290,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	};
 
 /***/ },
-/* 10 */
+/* 11 */
 /***/ function(module, exports, __webpack_require__) {
 
 	var __WEBPACK_AMD_DEFINE_RESULT__;/*
@@ -1817,7 +1883,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 
 /***/ },
-/* 11 */
+/* 12 */
 /***/ function(module, exports, __webpack_require__) {
 
 	/* WEBPACK VAR INJECTION */(function(module, process) {/*
@@ -1938,10 +2004,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	})(false ? [window, 'pinkySwear'] : [module, 'exports']);
 
 	
-	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(13)(module), __webpack_require__(12)))
+	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(14)(module), __webpack_require__(13)))
 
 /***/ },
-/* 12 */
+/* 13 */
 /***/ function(module, exports, __webpack_require__) {
 
 	// shim for using process in browser
@@ -2010,7 +2076,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 
 /***/ },
-/* 13 */
+/* 14 */
 /***/ function(module, exports, __webpack_require__) {
 
 	module.exports = function(module) {

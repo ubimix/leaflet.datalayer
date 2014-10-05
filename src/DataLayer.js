@@ -1,7 +1,6 @@
 var L = require('leaflet');
 var SimpleDataProvider = require('./SimpleDataProvider');
 var MarkersRenderer = require('./MarkersRenderer');
-var IndexedCanvas = require('./IndexedCanvas');
 var P = require('./P');
 
 /**

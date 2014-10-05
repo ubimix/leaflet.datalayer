@@ -6,9 +6,6 @@ var P = require('./P');
 /**
  * A common interface visualizing data on canvas.
  */
-function MarkersRenderer(options) {
-    this.initialize(options);
-}
 var MarkersRenderer = DataRenderer.extend({
 
     /** Initializes fields of this object. */
@@ -26,6 +23,23 @@ var MarkersRenderer = DataRenderer.extend({
     },
 
     /**
+     * Returns position (in pixels) of the specified geographic point on the
+     * canvas tile.
+     */
+    _getPositionOnTile : function(latlng, context) {
+        var map = this._map;
+        var layer = this._layer;
+        var tileSize = context.options.tileSize;
+        var tilePoint = context.options.tilePoint;
+        var p = map.project(latlng);
+        var s = tilePoint.multiplyBy(tileSize);
+        var x = Math.round(p.x - s.x);
+        var y = Math.round(p.y - s.y);
+        var result = L.point(x, y);
+        return result;
+    },
+
+    /**
      * Draws the specified resource and returns an image with x/y position of
      * this image on the tile. If this method returns nothing (or a
      * <code>null</code> value) then nothing is drawn for the specified
@@ -36,10 +50,26 @@ var MarkersRenderer = DataRenderer.extend({
      *         object defining position on the returned image on the tile;
      */
     _drawFeature : function(resource, context) {
+        var geometry = resource.geometry;
+        if (!geometry)
+            return;
+        console.log(this._getResourceType(resource), ' => ',
+                resource.geometry.type);
+        this._drawResourceMarker(resource, context);
+    },
+
+    /** Draws the specified resource as a marker */
+    _drawResourceMarker : function(resource, context) {
         var tilePoint = context.options.tilePoint;
-        var anchor = this._getPositionOnTile(resource, context);
+        var latlng = this._getCoordinates(resource);
+        if (!latlng) {
+            return;
+        }
+
+        var anchor = this._getPositionOnTile(latlng, context);
         if (!anchor)
             return;
+
         var cacheKey = this._getMarkerCacheKey(resource, context);
         var marker;
         if (cacheKey) {
@@ -56,27 +86,6 @@ var MarkersRenderer = DataRenderer.extend({
             var pos = anchor.subtract(markerAnchor);
             context.draw(marker.image, pos.x, pos.y, resource);
         }
-    },
-
-    /**
-     * Returns position (in pixels) of the specified geographic point on the
-     * canvas tile.
-     */
-    _getPositionOnTile : function(resource, context) {
-        var latlng = this._getCoordinates(resource);
-        if (!latlng) {
-            return;
-        }
-        var map = this._map;
-        var layer = this._layer;
-        var tileSize = context.options.tileSize;
-        var tilePoint = context.options.tilePoint;
-        var p = map.project(latlng);
-        var s = tilePoint.multiplyBy(tileSize);
-        var x = Math.round(p.x - s.x);
-        var y = Math.round(p.y - s.y);
-        var result = L.point(x, y);
-        return result;
     },
 
     // -----------------------------------------------------------------
@@ -183,7 +192,15 @@ var MarkersRenderer = DataRenderer.extend({
     /** Returns rendering options specific for the given resource. */
     _getRenderingOptions : function(resource, context) {
         return {};
-    }
+    },
+
+    /**
+     * This method returns an index keeping images and their corresponding
+     * masks.
+     */
+    _getMaskIndex : function() {
+        return this.options.maskIndex || {};
+    },
 });
 
 module.exports = MarkersRenderer;

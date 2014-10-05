@@ -8,7 +8,7 @@ var P = require('./P');
  * A simple data provider synchronously indexing the given data using an RTree
  * index.
  */
-var SimpleDataProvider = L.Class.extend({
+var SimpleDataProvider = IDataProvider.extend({
 
     /** Initializes this object and indexes the initial data set. */
     initialize : function(options) {

@@ -1,11 +1,11 @@
+var L = require('leaflet');
+var IIndexedCanvas = require('./IIndexedCanvas');
+
 /**
  * This utility class allows to associate data with non-transparent pixels of
  * images drawn on canvas.
  */
-function IndexedCanvas(options) {
-    this.initialize(options);
-}
-IndexedCanvas.prototype = {
+var MaskIndexedCanvas = IIndexedCanvas.extend({
 
     /**
      * Initializes internal fields of this class.
@@ -18,12 +18,11 @@ IndexedCanvas.prototype = {
      *            (resolution = 4)
      */
     initialize : function(options) {
-        this.options = options || {};
+        IIndexedCanvas.prototype.initialize.apply(this, arguments);
         var resolution = this.options.resolution || 4;
         this.options.resolutionX = this.options.resolutionX || resolution;
         this.options.resolutionY = this.options.resolutionY || //
         this.options.resolutionX || resolution;
-        this._canvas = this.options.canvas;
         this._maskWidth = this._getMaskX(this._canvas.width);
         this._maskHeight = this._getMaskY(this._canvas.height);
         this._dataIndex = {};
@@ -33,9 +32,7 @@ IndexedCanvas.prototype = {
      * Draws the specified image in the given position on the underlying canvas.
      */
     draw : function(image, x, y, data) {
-        // Draw the image on the canvas
-        var g = this._canvas.getContext('2d');
-        g.drawImage(image, x, y);
+        IIndexedCanvas.prototype.draw.apply(this, arguments);
         // Associate non-transparent pixels of the image with data
         this._addToCanvasMask(image, x, y, data);
     },
@@ -55,12 +52,8 @@ IndexedCanvas.prototype = {
      * Removes all data from internal indexes and cleans up underlying canvas.
      */
     reset : function() {
+        IIndexedCanvas.prototype.reset.apply(this, arguments);
         this._dataIndex = {};
-        if (this._maskIndex) {
-            this._maskIndex = {};
-        }
-        var g = this._canvas.getContext('2d');
-        g.clearRect(0, 0, this._canvas.width, this._canvas.height);
     },
 
     // ------------------------------------------------------------------
@@ -92,6 +85,9 @@ IndexedCanvas.prototype = {
      */
     _getImageMask : function(image) {
         var maskIndex = this._getImageMaskIndex();
+        if (!maskIndex) {
+            return this._buildImageMask(image);
+        }
         var imageId = this._getImageKey(image);
         var mask = maskIndex[imageId];
         if (!mask) {
@@ -105,11 +101,7 @@ IndexedCanvas.prototype = {
      * Returns a unique key of the specified image.
      */
     _getImageKey : function(image) {
-        if (!image._imageId) {
-            IndexedCanvas._id_counter = (IndexedCanvas._id_counter || 0) + 1;
-            image._imageId = 'image-' + IndexedCanvas._id_counter;
-        }
-        return image._imageId;
+        return L.stamp(image);
     },
 
     /**
@@ -118,10 +110,7 @@ IndexedCanvas.prototype = {
      * image masks.
      */
     _getImageMaskIndex : function() {
-        if (this.options.maskIndex)
-            return this.options.maskIndex;
-        this._maskIndex = this._maskIndex || {};
-        return this._maskIndex;
+        return this.options.maskIndex;
     },
 
     /** Creates and returns an image mask. */
@@ -137,7 +126,8 @@ IndexedCanvas.prototype = {
         var mask = new Array(image.width * image.height);
         for (var y = 0; y < image.height; y++) {
             for (var x = 0; x < image.width; x++) {
-                var idx = (y * image.width + x) * 4 + 3; // Alpha channel
+                var idx = (y * image.width + x) * 4 + 3; // Alpha
+                // channel
                 var maskX = this._getMaskX(x);
                 var maskY = this._getMaskY(y);
                 mask[maskY * maskWidth + maskX] = data[idx] ? 1 : 0;
@@ -169,6 +159,6 @@ IndexedCanvas.prototype = {
         var resolutionY = this.options.resolutionY;
         return Math.round(y / resolutionY);
     }
-};
+});
 
-module.exports = IndexedCanvas;
+module.exports = MaskIndexedCanvas;

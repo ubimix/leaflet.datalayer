@@ -5,7 +5,7 @@ var Utils = require('./DataUtils');
  * A common interface providing data for individual tiles. Used to
  * synchronously/asynchronously load data to render on tiles.
  */
-var IDataProvider = {
+var IDataProvider = L.Class.extend({
 
     /**
      * This method loads and returns an array of objects to show on tile
@@ -24,6 +24,6 @@ var IDataProvider = {
         return P.resolve([]);
     },
 
-};
+});
 
 module.exports = IDataProvider;

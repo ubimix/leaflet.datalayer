@@ -1,6 +1,6 @@
 var L = require('leaflet');
 var P = require('./P');
-var IndexedCanvas = require('./IndexedCanvas');
+var MaskIndexedCanvas = require('./MaskIndexedCanvas');
 var DataUtils = require('./DataUtils');
 
 /**
@@ -10,7 +10,7 @@ var DataRenderer = L.Class.extend({
 
     /** Constructor of this class; initializes internal fields. */
     initialize : function(options) {
-        this.options = options || {};
+        L.setOptions(this, options);
     },
 
     // -----------------------------------------------------------------------
@@ -18,7 +18,7 @@ var DataRenderer = L.Class.extend({
 
     /**
      * Renders data specified in the options and returns a promise with the
-     * canvas context (an IndexedCanvas instance).
+     * canvas context (an IIndexedCanvas instance).
      * 
      * @param options.data
      *            an array of objects to render on a canvas
@@ -81,13 +81,21 @@ var DataRenderer = L.Class.extend({
     // -----------------------------------------------------------------------
     // Internal methods
 
-    /** Creates and returns a canvas index (an IndexedCanvas instance). */
+    /** Creates and returns a canvas index (an IIndexedCanvas instance). */
     _newCanvasContext : function(options) {
         options = DataUtils.extend({}, options, {
-            maskIndex : this.options.maskIndex || {}
+            maskIndex : this._getMaskIndex()
         });
-        var index = new IndexedCanvas(options);
+        var index = new MaskIndexedCanvas(options);
         return index;
+    },
+
+    /**
+     * This method returns an index keeping images and their corresponding
+     * masks.
+     */
+    _getMaskIndex : function() {
+        return this.options.maskIndex;
     },
 
     // --------------------------------------------------------------------
