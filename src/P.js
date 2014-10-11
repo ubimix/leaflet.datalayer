@@ -5,9 +5,9 @@ function P(value) {
     return P.resolve(value);
 }
 P.defer = function() {
-    var pinkyswear = require('pinkyswear');
+    var pinkySwear = require('pinkyswear');
     P.defer = function() {
-        var p = pinkyswear();
+        var p = pinkySwear();
         return {
             promise : p,
             resolve : function(value) {

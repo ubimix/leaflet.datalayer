@@ -97,13 +97,15 @@ var DataLayer = L.TileLayer.Canvas.extend({
     /** Activates/deactivates event management for this layer. */
     _initEvents : function(onoff) {
         var events = 'click mouseover mouseout mousemove';
-        this._map.on(events, function(e) {
-            if (e.type === 'click') {
-                this._click(e);
-            } else {
-                this._move(e);
-            }
-        }, this);
+        this._map[onoff](events, this._mouseHandler, this);
+    },
+
+    _mouseHandler : function(e) {
+        if (e.type === 'click') {
+            this._click(e);
+        } else {
+            this._move(e);
+        }
     },
 
     /** Map click handler */

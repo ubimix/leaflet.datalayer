@@ -53,8 +53,6 @@ var MarkersRenderer = DataRenderer.extend({
         var geometry = resource.geometry;
         if (!geometry)
             return;
-        console.log(this._getResourceType(resource), ' => ',
-                resource.geometry.type);
         this._drawResourceMarker(resource, context);
     },
 

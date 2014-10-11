@@ -110,7 +110,7 @@ var DataRenderer = L.Class.extend({
     },
 
     /**
-     * This method is called when the paren layer is removed from the map.
+     * This method is called when the parent layer is removed from the map.
      */
     onRemove : function(layer) {
         delete this._layer;
