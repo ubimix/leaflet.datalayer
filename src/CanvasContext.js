@@ -175,22 +175,11 @@ CanvasContext.extend(CanvasContext.prototype, {
      */
     _checkFilledPixel : function(data, pos) {
         // Check that the alpha channel is not 0 which means that this
-        // pixel is
-        // not transparent
+        // pixel is not transparent and it should not be associated with
+        // a data object.
+        // 4 bytes per pixel; RGBA - forth byte is an alpha channel.
         var idx = pos * 4 + 3;
         return !!data[idx];
-    },
-
-    /**
-     * Creates and returns a new canvas instance. Could be overloaded in
-     * subclasses.
-     */
-    newCanvas : function() {
-        var canvas = document.createElement('canvas');
-        var size = this.getCanvasSize();
-        canvas.width = size[0];
-        canvas.height = size[1];
-        return canvas;
     },
 
     /**
