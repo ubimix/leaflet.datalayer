@@ -2,9 +2,6 @@ var L = require('leaflet');
 var DataRenderer = require('./DataRenderer');
 var P = require('./P');
 
-var PATTERN = new Image();
-PATTERN.src = "./img_lamp.jpg";
-
 /**
  * A common interface visualizing data on canvas.
  */
@@ -53,41 +50,31 @@ var GeometryRenderer = DataRenderer.extend({
         return;
 
         function drawPoints(points) {
+            var options = that._getMarkerOptions(context, resource);
+            if (!options.image)
+                return;
             for (var i = 0; i < points.length; i++) {
-                var anchor = points[i];
-                var cacheKey = that._getMarkerCacheKey(resource, context);
-                var marker;
-                if (cacheKey) {
-                    marker = that._markerCache[cacheKey];
-                }
-                if (!marker) {
-                    marker = that._newResourceMarker(resource, context);
-                    if (marker && marker.image && cacheKey) {
-                        that._markerCache[cacheKey] = marker;
-                        // Allow to re-use image mask to avoid cost
-                        // re-building
-                        context.setImageKey(marker.image);
+                var point = points[i];
+                var anchor = [ point[0], point[1] ]; // Copy
+                if (options.anchor) {
+                    if (options.anchor.x !== undefined) {
+                        anchor[0] -= options.anchor.x;
+                        anchor[1] -= options.anchor.y;
+                    } else {
+                        anchor[0] -= options.anchor[0];
+                        anchor[1] -= options.anchor[1];
                     }
                 }
-                if (marker && marker.image) {
-                    var anchor = [ anchor[0], anchor[1] ];
-                    if (marker.anchor) {
-                        if (marker.anchor.x !== undefined) {
-                            anchor[0] -= marker.anchor.x;
-                            anchor[1] -= marker.anchor.y;
-                        } else {
-                            anchor[0] -= marker.anchor[0];
-                            anchor[1] -= marker.anchor[1];
-                        }
-                    }
-                    context.drawImage(marker.image, anchor, {
-                        data : resource
-                    });
-                }
+                context.drawImage(options.image, anchor, {
+                    data : resource
+                });
             }
         }
 
         function drawLine(points) {
+            var line = that._getProjectedPoints(context, points);
+            var options = that._getLineOptions(context, resource);
+            context.drawLine(points, options);
         }
 
         function drawPolygon(coords) {
@@ -119,12 +106,10 @@ var GeometryRenderer = DataRenderer.extend({
                 drawLine(points);
                 break;
             case 'MultiLineString':
-                var points = [];
                 for (var i = 0; i < coords.length; i++) {
-                    var p = that._getProjectedPoints(context, coords[i]);
-                    points = points.concat(p);
+                    var points = that._getProjectedPoints(context, coords[i]);
+                    drawLine(points);
                 }
-                drawLine(points);
                 break;
             case 'Polygon':
                 drawPolygon(coords);
@@ -144,6 +129,16 @@ var GeometryRenderer = DataRenderer.extend({
         }
     },
 
+    // ------------------------------------------------------------------
+
+    _getLineOptions : function(context, resource) {
+        return {
+            lineColor : 'red',
+            lineOpacity : 1,
+            lineWidth : 5,
+            data : resource
+        }
+    },
     _getPolygonOptions : function(context, resource) {
         return {
             fillOpacity : 0.3,
@@ -151,55 +146,27 @@ var GeometryRenderer = DataRenderer.extend({
             lineColor : 'white',
             lineOpacity : 1,
             lineWidth : 1,
-            // fillImage : PATTERN,
             data : resource
         }
     },
 
-    // ------------------------------------------------------------------
-
-    /** Draws a line corresponding to the specified sequence of points. */
-    _drawLine : function(context, points, resource) {
-    },
-
-    // ------------------------------------------------------------------
-
-    /**
-     * Draws a polygon corresponding to the specified filled areas and holes
-     */
-    _drawPolygon : function(context, polygons, holes, resource) {
-        if (!polygons.length)
-            return;
-        function draw(g, coords) {
-            if (!coords)
-                return;
-            g.beginPath();
-            g.moveTo(coords[0][0], coords[0][1]);
-            for (var i = 1; i < coords.length; i++) {
-                g.lineTo(coords[i][0], coords[i][1]);
+    _getMarkerOptions : function(context, resource) {
+        var that = this;
+        var cacheKey = that._getMarkerCacheKey(resource, context);
+        var marker;
+        if (cacheKey) {
+            marker = that._markerCache[cacheKey];
+        }
+        if (!marker) {
+            marker = that._newResourceMarker(resource, context);
+            if (marker && marker.image && cacheKey) {
+                that._markerCache[cacheKey] = marker;
+                // Allow to re-use image mask to avoid cost
+                // re-building
+                context.setImageKey(marker.image);
             }
-            g.closePath();
         }
-        var canvas = this._newCanvas();
-        var size = context.getCanvasSize();
-        canvas.width = size[0];
-        canvas.height = size[1];
-        var g = canvas.getContext('2d');
-
-        g.fillStyle = 'green';
-        g.globalAlpha = 0.5;
-        g.globalCompositeOperation = 'source-over';
-        draw(g, polygons);
-        g.fill();
-
-        g.globalCompositeOperation = 'source-out';
-        g.globalAlpha = 1;
-        for (var i = 0; i < holes.length; i++) {
-            draw(g, holes[i]);
-            g.fill();
-        }
-
-        context.draw(canvas, 0, 0, resource);
+        return marker;
     },
 
     // ------------------------------------------------------------------
@@ -230,7 +197,7 @@ var GeometryRenderer = DataRenderer.extend({
      */
     _newResourceMarker : function(resource, context) {
         var radius = this._getRadius();
-        var canvas = this._newCanvas();
+        var canvas = context.newCanvas();
         var options = this._getRenderingOptions(resource, context);
         var lineWidth = options.lineWidth || 0;
         var width = radius * 2;
@@ -294,11 +261,6 @@ var GeometryRenderer = DataRenderer.extend({
     _getMaskIndex : function() {
         return this.options.maskIndex || {};
     },
-
-    /** Creates and returns a new canvas object. */
-    _newCanvas : function() {
-        return document.createElement('canvas');
-    }
 
 });
 
