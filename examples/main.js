@@ -31,13 +31,13 @@ function main(id) {
 
     // Load data and transform them into markers with basic interactivity
     // DATA object is defined in the './data.js' script.
-    var data = DATA.features;
+    var data = [].concat(DATA.features).concat(ZONES.features);
 
     /**
      * Custom data renderer. This class draws small circles for low zoom levels
      * and colored markers for higher zooms.
      */
-    var MyMarkerRenderer = L.DataLayer.MarkersRenderer.extend({
+    var MyRenderer = L.DataLayer.GeometryRenderer.extend({
         statics : {
             thresholdSize : 8
         },
@@ -86,7 +86,7 @@ function main(id) {
          */
         _newResourceMarker : function(resource, context) {
             var radius = this._getRadius();
-            var lineWidth = radius < MyMarkerRenderer.thresholdSize ? 1 : 2;
+            var lineWidth = radius < MyRenderer.thresholdSize ? 1 : 2;
             var type = this._getResourceType(resource);
             var color = this._getColor(type);
             var stroke = 'white';
@@ -99,7 +99,7 @@ function main(id) {
 
             var g = canvas.getContext('2d');
             g.globalAlpha = 0.85;
-            if (radius < MyMarkerRenderer.thresholdSize) {
+            if (radius < MyRenderer.thresholdSize) {
                 g.beginPath();
                 g.arc(width / 2, height / 2, radius, 0, 2 * Math.PI, false);
                 g.fillStyle = color;
@@ -165,14 +165,14 @@ function main(id) {
         getPopupOffset : function() {
             var radius = this._getRadius();
             var shift = +6;
-            if (radius < MyMarkerRenderer.thresholdSize) {
+            if (radius < MyRenderer.thresholdSize) {
                 return L.point(0, -radius + shift);
             } else {
                 return L.point(0, -radius * 2 + shift);
             }
         }
     });
-    var dataRenderer = new MyMarkerRenderer();
+    var dataRenderer = new MyRenderer();
 
     // Optional instantiation of a data provider.
     var dataProvider = new L.DataLayer.SimpleDataProvider({});
@@ -184,15 +184,24 @@ function main(id) {
     });
     // Bind an event listener for this layer
     dataLayer.on('click', function(ev) {
-        var coords = ev.data.geometry.coordinates;
-        var latlng = L.latLng(coords[1], coords[0]);
+        var latlng;
+        var content;
         var props = ev.data.properties;
-        var content = '' + //
-        '<div>' + //
-        '<h3>' + props.name + '</h3>' + //
-        '<div><em>' + props.category + '</em></div>' + //
-        '<p>' + props.description + '</p>' + //
-        '</div>';
+        if (ev.data.geometry.type == 'Point') {
+            var coords = ev.data.geometry.coordinates;
+            latlng = L.latLng(coords[1], coords[0]);
+            content = '' + //
+            '<div>' + //
+            '<h3>' + props.name + '</h3>' + //
+            '<div><em>' + props.category + '</em></div>' + //
+            '<p>' + props.description + '</p>' + //
+            '</div>';
+
+        } else {
+            latlng = ev.latlng;
+            var name = props.nom || props.pnr_origin;
+            content = '<div><h3>' + name + '</h3></div>';
+        }
         var offset = dataRenderer.getPopupOffset();
         L.popup({
             offset : offset,

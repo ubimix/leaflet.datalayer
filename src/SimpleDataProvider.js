@@ -1,4 +1,3 @@
-var L = require('leaflet');
 var rbush = require('rbush');
 var IDataProvider = require('./IDataProvider');
 var DataUtils = require('./DataUtils');
@@ -37,37 +36,38 @@ var SimpleDataProvider = IDataProvider.extend({
         data = data || [];
         var array = [];
         var that = this;
-        DataUtils.forEach(data, function(d, i) {
+        for (var i = 0; i < data.length; i++) {
+            var d = data[i];
             var bbox = that._getBoundingBox(d);
             if (bbox) {
                 var coords = that._toIndexKey(bbox);
                 coords.data = d;
                 array.push(coords);
             }
-        });
+        }
         this._rtree.load(array);
     },
 
     /** Searches resources in the specified bounding box. */
-    _searchInBbox : function(bbox, point) {
+    _searchInBbox : function(bbox) {
         var coords = this._toIndexKey(bbox);
         var array = this._rtree.search(coords);
         array = this._sortByDistance(array, bbox);
-
         var result = [];
-        DataUtils.forEach(array, function(arr, i) {
+        for (var i = 0; i < array.length; i++) {
+            var arr = array[i];
             result.push(arr.data);
-        });
+        }
         return result;
     },
 
     /**
      * Sorts the given data array by Manhattan distance to the origin point
      */
-    _sortByDistance : function(array, bbox, point) {
+    _sortByDistance : function(array, bbox) {
         var lat = bbox.getNorth();
         var lng = bbox.getEast();
-        var p = point ? [ point.lat, point.lng ] : [ lat, lng ];
+        var p = [ lat, lng ];
         array.sort(function(a, b) {
             var d1 = Math.abs(a[0] - p[0]) + Math.abs(a[1] - p[1]);
             var d2 = Math.abs(b[0] - p[0]) + Math.abs(b[1] - p[1]);

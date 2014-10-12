@@ -1,11 +1,12 @@
-var L = require('leaflet');
-var IIndexedCanvas = require('./IIndexedCanvas');
-
 /**
  * This utility class allows to associate data with non-transparent pixels of
  * images drawn on canvas.
  */
-var MaskIndexedCanvas = IIndexedCanvas.extend({
+function CanvasContext(options) {
+    this.initialize(options);
+}
+
+CanvasContext.prototype = {
 
     /**
      * Initializes internal fields of this class.
@@ -18,7 +19,9 @@ var MaskIndexedCanvas = IIndexedCanvas.extend({
      *            (resolution = 4)
      */
     initialize : function(options) {
-        IIndexedCanvas.prototype.initialize.apply(this, arguments);
+        this.options = options || {};
+        this._canvas = this.options.canvas;
+        this._canvasContext = this._canvas.getContext('2d');
         var resolution = this.options.resolution || 4;
         this.options.resolutionX = this.options.resolutionX || resolution;
         this.options.resolutionY = this.options.resolutionY || //
@@ -28,11 +31,17 @@ var MaskIndexedCanvas = IIndexedCanvas.extend({
         this._dataIndex = {};
     },
 
+    /** Returns an array with width and height of the canvas. */
+    getCanvasSize : function() {
+        return [ this._canvas.width, this._canvas.height ];
+    },
+
     /**
      * Draws the specified image in the given position on the underlying canvas.
      */
     draw : function(image, x, y, data) {
-        IIndexedCanvas.prototype.draw.apply(this, arguments);
+        // Draw the image on the canvas
+        this._canvasContext.drawImage(image, x, y);
         // Associate non-transparent pixels of the image with data
         this._addToCanvasMask(image, x, y, data);
     },
@@ -52,7 +61,8 @@ var MaskIndexedCanvas = IIndexedCanvas.extend({
      * Removes all data from internal indexes and cleans up underlying canvas.
      */
     reset : function() {
-        IIndexedCanvas.prototype.reset.apply(this, arguments);
+        var g = this._canvasContext;
+        g.clearRect(0, 0, this._canvas.width, this._canvas.height);
         this._dataIndex = {};
     },
 
@@ -73,8 +83,7 @@ var MaskIndexedCanvas = IIndexedCanvas.extend({
                 continue;
             var x = maskShiftX + (i % imageMaskWidth);
             var y = maskShiftY + Math.floor(i / imageMaskWidth);
-            if (x >= 0 && x < this._maskWidth && y >= 0 && //
-            y < this._maskHeight) {
+            if (x >= 0 && x < this._maskWidth && y >= 0 && y < this._maskHeight) {
                 this._dataIndex[y * this._maskWidth + x] = data;
             }
         }
@@ -85,23 +94,41 @@ var MaskIndexedCanvas = IIndexedCanvas.extend({
      */
     _getImageMask : function(image) {
         var maskIndex = this._getImageMaskIndex();
-        if (!maskIndex) {
+        var imageKey = this.getImageKey(image);
+        if (!maskIndex || !imageKey) {
             return this._buildImageMask(image);
         }
-        var imageId = this._getImageKey(image);
-        var mask = maskIndex[imageId];
+        var mask = maskIndex[imageKey];
         if (!mask) {
             mask = this._buildImageMask(image);
-            maskIndex[imageId] = mask;
+            maskIndex[imageKey] = mask;
         }
         return mask;
     },
 
     /**
-     * Returns a unique key of the specified image.
+     * Returns a unique key of the specified image. If this method returns
+     * <code>null</code> then the image mask is not stored in the internal
+     * mask cache. To allow to store the image mask in cache the image should be
+     * 'stampted' with a new identifier using the setImageKey method..
      */
-    _getImageKey : function(image) {
-        return L.stamp(image);
+    getImageKey : function(image) {
+        var id = image['image-id'];
+        return id;
+    },
+
+    /** Sets a new image key used to associate an image mask with this image. */
+    setImageKey : function(image, imageKey) {
+        var key = image['image-id'];
+        if (!key) {
+            if (!imageKey) {
+                var id = CanvasContext._imageIdCounter || 0;
+                CanvasContext._imageIdCounter = id + 1;
+                imageKey = 'key-' + id;
+            }
+            key = image['image-id'] = imageKey;
+        }
+        return key;
     },
 
     /**
@@ -115,33 +142,46 @@ var MaskIndexedCanvas = IIndexedCanvas.extend({
 
     /** Creates and returns an image mask. */
     _buildImageMask : function(image) {
-        var canvas = this._newCanvas();
+        var canvas = this.newCanvas();
         var g = canvas.getContext('2d');
-        canvas.width = image.width;
-        canvas.height = image.height;
-        g.drawImage(image, 0, 0);
-        var data = g.getImageData(0, 0, image.width, image.height).data;
         var maskWidth = this._getMaskX(image.width);
         var maskHeight = this._getMaskY(image.height);
-        var mask = new Array(image.width * image.height);
-        for (var y = 0; y < image.height; y++) {
-            for (var x = 0; x < image.width; x++) {
-                var idx = (y * image.width + x) * 4 + 3; // Alpha
-                // channel
-                var maskX = this._getMaskX(x);
-                var maskY = this._getMaskY(y);
-                mask[maskY * maskWidth + maskX] = data[idx] ? 1 : 0;
+        canvas.width = maskWidth;
+        canvas.height = maskHeight;
+        g.drawImage(image, 0, 0, maskWidth, maskHeight);
+        var data = g.getImageData(0, 0, maskWidth, maskHeight).data;
+        var mask = new Array(maskWidth * maskHeight);
+        for (var y = 0; y < maskHeight; y++) {
+            for (var x = 0; x < maskWidth; x++) {
+                var idx = (y * maskWidth + x);
+                var filled = this._checkFilledPixel(data, idx);
+                mask[idx] = filled ? 1 : 0;
             }
         }
         return mask;
     },
 
     /**
+     * Returns <code>true</code> if the specified pixel is associated with
+     * data
+     */
+    _checkFilledPixel : function(data, pos) {
+        // Check that the alpha channel is not 0 which means that this pixel is
+        // not transparent
+        var idx = pos * 4 + 3;
+        return !!data[idx];
+    },
+
+    /**
      * Creates and returns a new canvas instance. Could be overloaded in
      * subclasses.
      */
-    _newCanvas : function() {
-        return document.createElement('canvas');
+    newCanvas : function() {
+        var canvas = document.createElement('canvas');
+        var size = this.getCanvasSize();
+        canvas.width = size[0];
+        canvas.height = size[1];
+        return canvas;
     },
 
     /**
@@ -159,6 +199,6 @@ var MaskIndexedCanvas = IIndexedCanvas.extend({
         var resolutionY = this.options.resolutionY;
         return Math.round(y / resolutionY);
     }
-});
+};
 
-module.exports = MaskIndexedCanvas;
+module.exports = CanvasContext;

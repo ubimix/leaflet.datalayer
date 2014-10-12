@@ -36,7 +36,7 @@ module.exports = function(grunt) {
     // ----------------------------------------------------------------------
     config.watch = {
         scripts : {
-            files : sourceFiles,
+            files : [ '*.js' ].concat(sourceFiles),
             tasks : [ 'webpack' ],
             options : {
                 spawn : false,

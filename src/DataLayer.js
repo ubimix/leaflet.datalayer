@@ -25,9 +25,6 @@ var DataLayer = L.TileLayer.Canvas.extend({
         // Asynchronous tiles drawing
         async : false,
 
-        // Don't reuse canvas tiles
-        reuseTiles : false,
-
         // Use a global (per layer) index of masks.
         // Should be set to false if all data have individual
         // reprensentations on the map.
@@ -239,20 +236,22 @@ var DataLayer = L.TileLayer.Canvas.extend({
     _redrawTile : function(canvas) {
         var that = this;
         var tilePoint = canvas._tilePoint;
-        var bbox = this._getTileBoundingBox(tilePoint);
-        var dataProvider = this._getDataProvider();
+
+        var dataProvider = that._getDataProvider();
         var dataRenderer = that._getDataRenderer();
         return P.then(function() {
+            var bufferSize = dataRenderer.getBufferZoneSize();
+            var bbox = that._getTileBoundingBox(tilePoint, bufferSize);
             return dataProvider.loadData({
                 tilePoint : tilePoint,
                 bbox : bbox,
             });
         }).then(function(data) {
-            var tileSize = that._getTileSize();
             var zoom = that._map.getZoom();
+            var tileBbox = that._getTileBoundingBox(tilePoint);
             return dataRenderer.renderData({
                 tilePoint : tilePoint,
-                tileSize : tileSize,
+                bbox : tileBbox,
                 zoom : zoom,
                 canvas : canvas,
                 data : data,
@@ -279,29 +278,6 @@ var DataLayer = L.TileLayer.Canvas.extend({
     },
 
     /**
-     * Returns a bounding box around a tile with the specified coordinates. This
-     * bounding box is used to load data to show on the tile. The returned
-     * bounding box is bigger than tile - it includes a buffer zone used to
-     * avoid clipping of rendered data. The size of the additional buffering
-     * zone is defined by the "IDataRenderer.getBufferZoneSize" method.
-     */
-    _getTileBoundingBox : function(tilePoint) {
-        var that = this;
-        var tileSize = that._getTileSize();
-        var nwPoint = tilePoint.multiplyBy(tileSize);
-        var sePoint = nwPoint.add(new L.Point(tileSize, tileSize));
-        var dataRenderer = this._getDataRenderer();
-        var bufferSize = dataRenderer.getBufferZoneSize();
-        bufferSize = L.point(bufferSize);
-        nwPoint = nwPoint.subtract(bufferSize);
-        sePoint = sePoint.add(bufferSize);
-        var nw = that._map.unproject(nwPoint);
-        var se = that._map.unproject(sePoint);
-        var bbox = new L.LatLngBounds(se, nw);
-        return bbox;
-    },
-
-    /**
      * Returns a IDataRenderer renderer instance responsible for data
      * visualization.
      */
@@ -313,6 +289,27 @@ var DataLayer = L.TileLayer.Canvas.extend({
             });
         }
         return this.options.dataRenderer;
+    },
+
+    /**
+     * Returns a bounding box around a tile with the specified coordinates. This
+     * bounding box is used to load data to show on the tile. The returned
+     * bounding box is bigger than tile - it includes a buffer zone used to
+     * avoid clipping of rendered data. The size of the additional buffering
+     * zone is defined by the "IDataRenderer.getBufferZoneSize" method.
+     */
+    _getTileBoundingBox : function(tilePoint, bufferSize) {
+        var that = this;
+        var tileSize = that._getTileSize();
+        var nwPoint = tilePoint.multiplyBy(tileSize);
+        var sePoint = nwPoint.add(new L.Point(tileSize, tileSize));
+        bufferSize = L.point(bufferSize || [ 0, 0 ]);
+        nwPoint = nwPoint.subtract(bufferSize);
+        sePoint = sePoint.add(bufferSize);
+        var nw = that._map.unproject(nwPoint);
+        var se = that._map.unproject(sePoint);
+        var bbox = new L.LatLngBounds(se, nw);
+        return bbox;
     },
 
     /**

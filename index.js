@@ -5,8 +5,8 @@ DataLayer.IDataProvider = require('./src/IDataProvider');
 DataLayer.IDataRenderer = require('./src/DataRenderer');
 DataLayer.SimpleDataProvider = require('./src/SimpleDataProvider');
 DataLayer.MarkersRenderer = require('./src/MarkersRenderer');
-DataLayer.IIndexedCanvas = require('./src/IIndexedCanvas');
-DataLayer.MaskIndexedCanvas = require('./src/MaskIndexedCanvas');
+DataLayer.GeometryRenderer = require('./src/GeometryRenderer');
+DataLayer.CanvasContext = require('./src/CanvasContext');
 DataLayer.P = DataLayer.Promise = L.Promise = require('./src/P');
 DataLayer.DataUtils = require('./src/DataUtils');
 

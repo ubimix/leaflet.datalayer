@@ -4,20 +4,10 @@ module.exports = P;
 function P(value) {
     return P.resolve(value);
 }
-P.defer = function() {
-    var pinkySwear = require('pinkyswear');
-    P.defer = function() {
-        var p = pinkySwear();
-        return {
-            promise : p,
-            resolve : function(value) {
-                p(true, [ value ]);
-            },
-            reject : function(reason) {
-                p(false, [ reason ]);
-            }
-        };
-    };
+P.defer = P.deferred = function() {
+    var Deferred = require('./Deferred');
+    Deferred.SYNC = true;
+    P.defer = Deferred;
     return P.defer();
 };
 P.then = function(onResolve, onReject) {
@@ -25,12 +15,12 @@ P.then = function(onResolve, onReject) {
     deferred.resolve();
     return deferred.promise.then(onResolve, onReject);
 };
-P.reject = function(value) {
+P.reject = P.rejected = function(value) {
     var deferred = P.defer();
     deferred.reject(value);
     return deferred.promise;
 };
-P.resolve = function(value) {
+P.resolve = P.resolved = function(value) {
     var deferred = P.defer();
     deferred.resolve(value);
     return deferred.promise;

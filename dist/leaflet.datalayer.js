@@ -65,8 +65,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	DataLayer.IDataRenderer = __webpack_require__(4);
 	DataLayer.SimpleDataProvider = __webpack_require__(5);
 	DataLayer.MarkersRenderer = __webpack_require__(6);
-	DataLayer.IIndexedCanvas = __webpack_require__(7);
-	DataLayer.MaskIndexedCanvas = __webpack_require__(8);
+	DataLayer.GeometryRenderer = __webpack_require__(7);
+	DataLayer.CanvasContext = __webpack_require__(8);
 	DataLayer.P = DataLayer.Promise = L.Promise = __webpack_require__(9);
 	DataLayer.DataUtils = __webpack_require__(10);
 
@@ -109,9 +109,6 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	        // Asynchronous tiles drawing
 	        async : false,
-
-	        // Don't reuse canvas tiles
-	        reuseTiles : false,
 
 	        // Use a global (per layer) index of masks.
 	        // Should be set to false if all data have individual
@@ -182,13 +179,15 @@ return /******/ (function(modules) { // webpackBootstrap
 	    /** Activates/deactivates event management for this layer. */
 	    _initEvents : function(onoff) {
 	        var events = 'click mouseover mouseout mousemove';
-	        this._map.on(events, function(e) {
-	            if (e.type === 'click') {
-	                this._click(e);
-	            } else {
-	                this._move(e);
-	            }
-	        }, this);
+	        this._map[onoff](events, this._mouseHandler, this);
+	    },
+
+	    _mouseHandler : function(e) {
+	        if (e.type === 'click') {
+	            this._click(e);
+	        } else {
+	            this._move(e);
+	        }
 	    },
 
 	    /** Map click handler */
@@ -322,20 +321,22 @@ return /******/ (function(modules) { // webpackBootstrap
 	    _redrawTile : function(canvas) {
 	        var that = this;
 	        var tilePoint = canvas._tilePoint;
-	        var bbox = this._getTileBoundingBox(tilePoint);
-	        var dataProvider = this._getDataProvider();
+
+	        var dataProvider = that._getDataProvider();
 	        var dataRenderer = that._getDataRenderer();
 	        return P.then(function() {
+	            var bufferSize = dataRenderer.getBufferZoneSize();
+	            var bbox = that._getTileBoundingBox(tilePoint, bufferSize);
 	            return dataProvider.loadData({
 	                tilePoint : tilePoint,
 	                bbox : bbox,
 	            });
 	        }).then(function(data) {
-	            var tileSize = that._getTileSize();
 	            var zoom = that._map.getZoom();
+	            var tileBbox = that._getTileBoundingBox(tilePoint);
 	            return dataRenderer.renderData({
 	                tilePoint : tilePoint,
-	                tileSize : tileSize,
+	                bbox : tileBbox,
 	                zoom : zoom,
 	                canvas : canvas,
 	                data : data,
@@ -362,29 +363,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	    },
 
 	    /**
-	     * Returns a bounding box around a tile with the specified coordinates. This
-	     * bounding box is used to load data to show on the tile. The returned
-	     * bounding box is bigger than tile - it includes a buffer zone used to
-	     * avoid clipping of rendered data. The size of the additional buffering
-	     * zone is defined by the "IDataRenderer.getBufferZoneSize" method.
-	     */
-	    _getTileBoundingBox : function(tilePoint) {
-	        var that = this;
-	        var tileSize = that._getTileSize();
-	        var nwPoint = tilePoint.multiplyBy(tileSize);
-	        var sePoint = nwPoint.add(new L.Point(tileSize, tileSize));
-	        var dataRenderer = this._getDataRenderer();
-	        var bufferSize = dataRenderer.getBufferZoneSize();
-	        bufferSize = L.point(bufferSize);
-	        nwPoint = nwPoint.subtract(bufferSize);
-	        sePoint = sePoint.add(bufferSize);
-	        var nw = that._map.unproject(nwPoint);
-	        var se = that._map.unproject(sePoint);
-	        var bbox = new L.LatLngBounds(se, nw);
-	        return bbox;
-	    },
-
-	    /**
 	     * Returns a IDataRenderer renderer instance responsible for data
 	     * visualization.
 	     */
@@ -396,6 +374,27 @@ return /******/ (function(modules) { // webpackBootstrap
 	            });
 	        }
 	        return this.options.dataRenderer;
+	    },
+
+	    /**
+	     * Returns a bounding box around a tile with the specified coordinates. This
+	     * bounding box is used to load data to show on the tile. The returned
+	     * bounding box is bigger than tile - it includes a buffer zone used to
+	     * avoid clipping of rendered data. The size of the additional buffering
+	     * zone is defined by the "IDataRenderer.getBufferZoneSize" method.
+	     */
+	    _getTileBoundingBox : function(tilePoint, bufferSize) {
+	        var that = this;
+	        var tileSize = that._getTileSize();
+	        var nwPoint = tilePoint.multiplyBy(tileSize);
+	        var sePoint = nwPoint.add(new L.Point(tileSize, tileSize));
+	        bufferSize = L.point(bufferSize || [ 0, 0 ]);
+	        nwPoint = nwPoint.subtract(bufferSize);
+	        sePoint = sePoint.add(bufferSize);
+	        var nw = that._map.unproject(nwPoint);
+	        var se = that._map.unproject(sePoint);
+	        var bbox = new L.LatLngBounds(se, nw);
+	        return bbox;
 	    },
 
 	    /**
@@ -468,7 +467,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	var L = __webpack_require__(1);
 	var P = __webpack_require__(9);
-	var MaskIndexedCanvas = __webpack_require__(8);
+	var CanvasContext = __webpack_require__(8);
 	var DataUtils = __webpack_require__(10);
 
 	/**
@@ -486,18 +485,16 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	    /**
 	     * Renders data specified in the options and returns a promise with the
-	     * canvas context (an IIndexedCanvas instance).
+	     * canvas context (an CanvasContext instance).
 	     * 
 	     * @param options.data
 	     *            an array of objects to render on a canvas
 	     * @param options.canvas
 	     *            the canvas where the data should be rendered
-	     * @param options.tilePoint
-	     *            an array with x/y position of the tile
+	     * @param options.bbox
+	     *            geographic bounding box corresponding to the canvas
 	     * @param options.zoom
-	     *            the current map zoom
-	     * @param options.tileSize
-	     *            the size of each tile
+	     *            the current map zoom level
 	     */
 	    renderData : function(options) {
 	        var that = this;
@@ -506,9 +503,11 @@ return /******/ (function(modules) { // webpackBootstrap
 	            return that._prepareContext(context);
 	        }).then(function() {
 	            var data = options.data || [];
-	            DataUtils.forEach(data, function(d, i) {
+	            var len = data.length;
+	            for (var i = 0; i < len; i++) {
+	                var d = data[i];
 	                that._drawFeature(d, context);
-	            });
+	            }
 	        }).then(function() {
 	            return context;
 	        });
@@ -549,13 +548,13 @@ return /******/ (function(modules) { // webpackBootstrap
 	    // -----------------------------------------------------------------------
 	    // Internal methods
 
-	    /** Creates and returns a canvas index (an IIndexedCanvas instance). */
+	    /** Creates and returns a canvas index (a CanvasContext instance). */
 	    _newCanvasContext : function(options) {
 	        options = DataUtils.extend({}, options, {
 	            maskIndex : this._getMaskIndex()
 	        });
-	        var index = new MaskIndexedCanvas(options);
-	        return index;
+	        var context = new CanvasContext(options);
+	        return context;
 	    },
 
 	    /**
@@ -578,11 +577,67 @@ return /******/ (function(modules) { // webpackBootstrap
 	    },
 
 	    /**
-	     * This method is called when the paren layer is removed from the map.
+	     * This method is called when the parent layer is removed from the map.
 	     */
 	    onRemove : function(layer) {
 	        delete this._layer;
 	        delete this._map;
+	    },
+
+	    // --------------------------------------------------------------------
+	    // Utility methods used in subclasses
+
+	    /**
+	     * Returns projected position (in pixels) of the specified geographic point
+	     * relative to an origin point
+	     */
+	    _getProjectedPoint : function(context, coords) {
+	        var origin = this._getTopLeft(context.options.bbox);
+	        var o = this._projectPoint(origin);
+	        var p = this._projectPoint(coords);
+	        var x = Math.round(p.x - o.x);
+	        var y = Math.round(p.y - o.y);
+	        return [ x, y ];
+	    },
+
+	    /**
+	     * Returns an array of projected points.
+	     */
+	    _getProjectedPoints : function(context, coordinates) {
+	        var origin = this._getTopLeft(context.options.bbox);
+	        var o = this._projectPoint(origin);
+	        var result = [];
+	        for (var i = 0; i < coordinates.length; i++) {
+	            var point = coordinates[i];
+	            var p = this._projectPoint(point);
+	            var x = Math.round(p.x - o.x);
+	            var y = Math.round(p.y - o.y);
+	            result.push([ x, y ]);
+	        }
+	        return result;
+	    },
+
+	    // --------------------------------------------------------------------
+	    // FIXME: use GeoJSON coordinates for bounding boxes instead
+	    _getTopLeft : function(bbox) {
+	        var origin = bbox.getNorthWest();
+	        return [ origin.lng, origin.lat ];
+	    },
+	    _projectPoint : function(coords) {
+	        var map = this._map;
+	        return map.project([ coords[1], coords[0] ]);
+	    },
+
+	    /**
+	     * Returns point an array [lng, lat] with coordinates for the specified
+	     * resource.
+	     */
+	    _getCoordinates : function(d) {
+	        var bbox = DataUtils.getGeoJsonBoundingBox(d);
+	        if (!bbox)
+	            return null;
+	        var latlng = bbox.getCenter();
+	        return [ latlng.lng, latlng.lat ];
 	    },
 
 	});
@@ -592,8 +647,7 @@ return /******/ (function(modules) { // webpackBootstrap
 /* 5 */
 /***/ function(module, exports, __webpack_require__) {
 
-	var L = __webpack_require__(1);
-	var rbush = __webpack_require__(11);
+	var rbush = __webpack_require__(12);
 	var IDataProvider = __webpack_require__(3);
 	var DataUtils = __webpack_require__(10);
 	var P = __webpack_require__(9);
@@ -631,37 +685,38 @@ return /******/ (function(modules) { // webpackBootstrap
 	        data = data || [];
 	        var array = [];
 	        var that = this;
-	        DataUtils.forEach(data, function(d, i) {
+	        for (var i = 0; i < data.length; i++) {
+	            var d = data[i];
 	            var bbox = that._getBoundingBox(d);
 	            if (bbox) {
 	                var coords = that._toIndexKey(bbox);
 	                coords.data = d;
 	                array.push(coords);
 	            }
-	        });
+	        }
 	        this._rtree.load(array);
 	    },
 
 	    /** Searches resources in the specified bounding box. */
-	    _searchInBbox : function(bbox, point) {
+	    _searchInBbox : function(bbox) {
 	        var coords = this._toIndexKey(bbox);
 	        var array = this._rtree.search(coords);
 	        array = this._sortByDistance(array, bbox);
-
 	        var result = [];
-	        DataUtils.forEach(array, function(arr, i) {
+	        for (var i = 0; i < array.length; i++) {
+	            var arr = array[i];
 	            result.push(arr.data);
-	        });
+	        }
 	        return result;
 	    },
 
 	    /**
 	     * Sorts the given data array by Manhattan distance to the origin point
 	     */
-	    _sortByDistance : function(array, bbox, point) {
+	    _sortByDistance : function(array, bbox) {
 	        var lat = bbox.getNorth();
 	        var lng = bbox.getEast();
-	        var p = point ? [ point.lat, point.lng ] : [ lat, lng ];
+	        var p = [ lat, lng ];
 	        array.sort(function(a, b) {
 	            var d1 = Math.abs(a[0] - p[0]) + Math.abs(a[1] - p[1]);
 	            var d2 = Math.abs(b[0] - p[0]) + Math.abs(b[1] - p[1]);
@@ -719,23 +774,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	    },
 
 	    /**
-	     * Returns position (in pixels) of the specified geographic point on the
-	     * canvas tile.
-	     */
-	    _getPositionOnTile : function(latlng, context) {
-	        var map = this._map;
-	        var layer = this._layer;
-	        var tileSize = context.options.tileSize;
-	        var tilePoint = context.options.tilePoint;
-	        var p = map.project(latlng);
-	        var s = tilePoint.multiplyBy(tileSize);
-	        var x = Math.round(p.x - s.x);
-	        var y = Math.round(p.y - s.y);
-	        var result = L.point(x, y);
-	        return result;
-	    },
-
-	    /**
 	     * Draws the specified resource and returns an image with x/y position of
 	     * this image on the tile. If this method returns nothing (or a
 	     * <code>null</code> value) then nothing is drawn for the specified
@@ -749,20 +787,16 @@ return /******/ (function(modules) { // webpackBootstrap
 	        var geometry = resource.geometry;
 	        if (!geometry)
 	            return;
-	        console.log(this._getResourceType(resource), ' => ',
-	                resource.geometry.type);
 	        this._drawResourceMarker(resource, context);
 	    },
 
 	    /** Draws the specified resource as a marker */
 	    _drawResourceMarker : function(resource, context) {
-	        var tilePoint = context.options.tilePoint;
-	        var latlng = this._getCoordinates(resource);
-	        if (!latlng) {
+	        var coords = this._getCoordinates(resource);
+	        if (!coords) {
 	            return;
 	        }
-
-	        var anchor = this._getPositionOnTile(latlng, context);
+	        var anchor = this._getProjectedPoint(context, coords);
 	        if (!anchor)
 	            return;
 
@@ -775,11 +809,13 @@ return /******/ (function(modules) { // webpackBootstrap
 	            marker = this._newResourceMarker(resource, context);
 	            if (marker && marker.image && cacheKey) {
 	                this._markerCache[cacheKey] = marker;
+	                // Allow to re-use image mask to avoid cost re-building
+	                context.setImageKey(marker.image);
 	            }
 	        }
 	        if (marker && marker.image) {
 	            var markerAnchor = L.point(marker.anchor);
-	            var pos = anchor.subtract(markerAnchor);
+	            var pos = L.point(anchor).subtract(markerAnchor);
 	            context.draw(marker.image, pos.x, pos.y, resource);
 	        }
 	    },
@@ -788,17 +824,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	    // All other methods are specific for resources corresponding to points
 	    // on maps and used only by the _getBoundingBox and/or by _drawFeature
 	    // methods.
-
-	    /**
-	     * Returns point a L.LatLng object with coordinates for the specified
-	     * resource.
-	     */
-	    _getCoordinates : function(d) {
-	        var bbox = DataUtils.getGeoJsonBoundingBox(d);
-	        if (!bbox)
-	            return null;
-	        return bbox.getCenter();
-	    },
 
 	    /** Get the radius of markers. */
 	    _getRadius : function(defaultValue) {
@@ -906,65 +931,583 @@ return /******/ (function(modules) { // webpackBootstrap
 /***/ function(module, exports, __webpack_require__) {
 
 	var L = __webpack_require__(1);
+	var DataRenderer = __webpack_require__(4);
+	var P = __webpack_require__(9);
+
+	function GeometryUtils(context) {
+	    this.context = context;
+	}
+
+	GeometryUtils.prototype = {
+
+	    drawPoints : function(points, draw) {
+	        var info = draw(points);
+	        this._drawImage(info);
+	    },
+	    drawLine : function(points, draw) {
+	        var bbox = this.getBoundingBox();
+	        var clipped = [];
+	        var prev = points[0];
+	        for (var i = 1; i < points.length; i++) {
+	            var next = points[i];
+	            var line = GeometryUtils.clipLine([ prev, next ], bbox);
+	            if (line) {
+	                clipped.push(line);
+	            }
+	        }
+	        var info = draw(clipped);
+	        this._drawImage(info);
+	    },
+	    drawPolygon : function(polygons, holes, options) {
+	        var bbox = this.getBoundingPolygon([ 10, 10 ]);
+
+	        var clippedPolygons = GeometryUtils.clipPolygon(polygons, bbox);
+	        var clippedHoles = [];
+	        for (var i = 0; i < holes.length; i++) {
+	            var hole = GeometryUtils.clipPolygon(holes[i], bbox);
+	            if (hole.length) {
+	                clippedHoles.push(hole);
+	            }
+	        }
+	        if (!clippedPolygons.length)
+	            return;
+
+	        bbox = this.getBoundingBox([ 50, 50 ]);
+	        var allLines = GeometryUtils.clipLines(polygons, bbox) || [];
+	        for (var i = 0; i < holes.length; i++) {
+	            var lines = GeometryUtils.clipLines(holes[i], bbox);
+	            if (lines && lines.length) {
+	                allLines = allLines.concat(lines);
+	            }
+	        }
+	        var canvas = this.context.newCanvas();
+	        var size = this.context.getCanvasSize();
+	        canvas.width = size[0];
+	        canvas.height = size[1];
+	        var g = canvas.getContext('2d');
+
+	        g.fillStyle = options.fillColor || options.color;
+	        g.globalAlpha = options.fillOpacity || options.opacity || 1;
+	        g.globalCompositeOperation = 'source-over';
+	        this._drawPolygon(g, clippedPolygons);
+	        g.fill();
+
+	        g.globalCompositeOperation = 'destination-out';
+	        g.globalAlpha = 1;
+	        for (var i = 0; i < clippedHoles.length; i++) {
+	            if (clippedHoles[i].length) {
+	                this._drawPolygon(g, clippedHoles[i]);
+	                g.fill();
+	            }
+	        }
+
+	        if (allLines.length) {
+	            g = canvas.getContext('2d');
+	            g.strokeStyle = options.lineColor || options.color;
+	            g.globalAlpha = options.lineOpacity || options.opacity || 1;
+	            g.lineWidth = options.lineWidth || options.width || 1;
+	            g.globalCompositeOperation = 'source-over';
+	            g.beginPath();
+	            for (var i = 0; i < allLines.length; i++) {
+	                this._drawLines(g, allLines[i]);
+	                g.stroke();
+	            }
+	        }
+
+	        this._drawImage({
+	            image : canvas,
+	            anchor : [ 0, 0 ],
+	            data : options.data
+	        });
+	    },
+
+	    /** Returns bounding box for the underlying canvas. */
+	    getBoundingPolygon : function(buffer) {
+	        buffer = buffer || [ 0, 0 ];
+	        var size = this.context.getCanvasSize();
+	        return [ [ -buffer[0], -buffer[1] ],
+	                [ size[0] + buffer[0], -buffer[1] ],
+	                [ size[0] + buffer[0], size[1] + buffer[1] ],
+	                [ -buffer[0], size[1] + buffer[1] ] ];
+	    },
+
+	    getBoundingBox : function(buffer) {
+	        buffer = buffer || [ 0, 0 ];
+	        var size = this.context.getCanvasSize();
+	        return [ [ -buffer[0], -buffer[1] ],
+	                [ size[0] + buffer[0], size[1] + buffer[1] ] ];
+	    },
+
+	    _drawPolygon : function(g, coords) {
+	        if (!coords)
+	            return;
+	        g.beginPath();
+	        g.moveTo(coords[0][0], coords[0][1]);
+	        for (var i = 1; i < coords.length; i++) {
+	            g.lineTo(coords[i][0], coords[i][1]);
+	        }
+	        g.closePath();
+	    },
+
+	    _drawLines : function(g, line) {
+	        g.beginPath();
+	        g.moveTo(line[0][0], line[0][1]);
+	        for (var i = 1; i < line.length; i++) {
+	            g.lineTo(line[i][0], line[i][1]);
+	        }
+	    },
+
+	    _drawImage : function(info) {
+	        if (info && info.image) {
+	            var x = 0;
+	            var y = 0;
+	            if (info.anchor) {
+	                x = info.anchor[0];
+	                y = info.anchor[1];
+	            }
+	            this.context.draw(info.image, x, y, info.data);
+	        }
+
+	    },
+	}
+
+	GeometryUtils._computeOutcode = function(x, y, xmin, ymin, xmax, ymax) {
+	    var oc = 0;
+	    if (y > ymax)
+	        oc |= 1 /* TOP */;
+	    else if (y < ymin)
+	        oc |= 2 /* BOTTOM */;
+	    if (x > xmax)
+	        oc |= 4 /* RIGHT */;
+	    else if (x < xmin)
+	        oc |= 8 /* LEFT */;
+	    return oc;
+	};
+
+	GeometryUtils.clipLines = function(lines, bounds) {
+	    var result = [];
+	    var prev = lines[0];
+	    for (var i = 1; i < lines.length; i++) {
+	        var next = lines[i];
+	        var clipped = this.clipLine([ prev, next ], bounds);
+	        if (clipped) {
+	            result.push(clipped);
+	        }
+	        prev = next;
+	    }
+	    return result;
+	};
+
+	// Cohen-Sutherland line-clipping algorithm
+	GeometryUtils.clipLine = function(line, bbox) {
+	    var x1 = line[0][0];
+	    var y1 = line[0][1];
+	    var x2 = line[1][0];
+	    var y2 = line[1][1];
+	    var xmin = Math.min(bbox[0][0], bbox[1][0]);
+	    var ymin = Math.min(bbox[0][1], bbox[1][1]);
+	    var xmax = Math.max(bbox[0][0], bbox[1][0]);
+	    var ymax = Math.max(bbox[0][1], bbox[1][1]);
+	    var accept = false;
+	    var done = false;
+
+	    var outcode1 = this._computeOutcode(x1, y1, xmin, ymin, xmax, ymax);
+	    var outcode2 = this._computeOutcode(x2, y2, xmin, ymin, xmax, ymax);
+	    do {
+	        if (outcode1 === 0 && outcode2 === 0) {
+	            accept = true;
+	            done = true;
+	        } else if (!!(outcode1 & outcode2)) {
+	            done = true;
+	        } else {
+	            var x, y;
+	            var outcode_ex = outcode1 ? outcode1 : outcode2;
+	            if (outcode_ex & 1 /* TOP */) {
+	                x = x1 + (x2 - x1) * (ymax - y1) / (y2 - y1);
+	                y = ymax;
+	            } else if (outcode_ex & 2 /* BOTTOM */) {
+	                x = x1 + (x2 - x1) * (ymin - y1) / (y2 - y1);
+	                y = ymin;
+	            } else if (outcode_ex & 4 /* RIGHT */) {
+	                y = y1 + (y2 - y1) * (xmax - x1) / (x2 - x1);
+	                x = xmax;
+	            } else { // 8 /* LEFT */
+	                y = y1 + (y2 - y1) * (xmin - x1) / (x2 - x1);
+	                x = xmin;
+	            }
+	            if (outcode_ex === outcode1) {
+	                x1 = x;
+	                y1 = y;
+	                outcode1 = this._computeOutcode(x1, y1, xmin, ymin, xmax, ymax);
+	            } else {
+	                x2 = x;
+	                y2 = y;
+	                outcode2 = this._computeOutcode(x2, y2, xmin, ymin, xmax, ymax);
+	            }
+	        }
+	    } while (!done);
+	    var result = [ [ x1, y1 ], [ x2, y2 ] ];
+	    return accept ? result : null;
+	};
+
+	// Sutherland Hodgman polygon clipping algorithm
+	// http://rosettacode.org/wiki/Sutherland-Hodgman_polygon_clipping
+	GeometryUtils.clipPolygon = function(subjectPolygon, clipPolygon) {
+	    var cp1, cp2, s, e;
+	    var inside = function(p) {
+	        return (cp2[0] - cp1[0]) * (p[1] - cp1[1]) > (cp2[1] - cp1[1])
+	                * (p[0] - cp1[0]);
+	    };
+	    var intersection = function() {
+	        var dc = [ cp1[0] - cp2[0], cp1[1] - cp2[1] ], dp = [ s[0] - e[0],
+	                s[1] - e[1] ], n1 = cp1[0] * cp2[1] - cp1[1] * cp2[0], n2 = s[0]
+	                * e[1] - s[1] * e[0], n3 = 1.0 / (dc[0] * dp[1] - dc[1] * dp[0]);
+	        return [ Math.round((n1 * dp[0] - n2 * dc[0]) * n3),
+	                Math.round((n1 * dp[1] - n2 * dc[1]) * n3) ];
+	    };
+	    var outputList = subjectPolygon;
+	    cp1 = clipPolygon[clipPolygon.length - 1];
+	    for (j in clipPolygon) {
+	        var cp2 = clipPolygon[j];
+	        var inputList = outputList;
+	        outputList = [];
+	        s = inputList[inputList.length - 1]; // last on the input list
+	        for (i in inputList) {
+	            var e = inputList[i];
+	            if (inside(e)) {
+	                if (!inside(s)) {
+	                    outputList.push(intersection());
+	                }
+	                outputList.push(e);
+	            } else if (inside(s)) {
+	                outputList.push(intersection());
+	            }
+	            s = e;
+	        }
+	        cp1 = cp2;
+	    }
+	    if (outputList && outputList.length) {
+	        outputList.push(outputList[0]);
+	    }
+	    return outputList || [];
+	};
 
 	/**
-	 * This utility class allows to associate data with non-transparent pixels of
-	 * images drawn on canvas.
+	 * A common interface visualizing data on canvas.
 	 */
-	var IIndexedCanvas = L.Class.extend({
+	var GeometryRenderer = DataRenderer.extend({
+
+	    /** Initializes fields of this object. */
+	    initialize : function() {
+	        DataRenderer.prototype.initialize.apply(this, arguments);
+	        this._markerCache = {};
+	    },
+
+	    // -----------------------------------------------------------------------
+	    // The following methods should be overloaded in subclasses
 
 	    /**
-	     * Initializes internal fields of this class.
+	     * Returns a buffer zone size (in pixels) around each tile.
+	     */
+	    getBufferZoneSize : function() {
+	        var size = this._layer._getTileSize() / 4;
+	        return [ size, size ];
+	    },
+
+	    /**
+	     * Prepares the specified context. This method could be overload to
+	     * asynchronously load resources required to render data.
+	     */
+	    _prepareContext : function(context) {
+	        return P.resolve(context);
+	    },
+
+	    /**
+	     * Draws the specified resource on the given canvas context. This method
+	     * should be overloaded in subclasses.
 	     * 
-	     * @param options.canvas
-	     *            mandatory canvas object used to draw images
+	     * @param resource
+	     *            the resource to render
+	     * @param context
+	     *            a canvas context
 	     */
-	    initialize : function(options) {
-	        L.setOptions(this, options);
-	        this._canvas = this.options.canvas;
+	    _drawFeature : function(resource, context) {
+	        var that = this;
+	        var geometry = resource.geometry;
+	        if (!geometry)
+	            return;
+	        var utils = new GeometryUtils(context);
+	        drawGeometry(utils, geometry);
+	        return;
+
+	        function drawPoints(points) {
+	            utils.drawPoints(points, function(points) {
+	                for (var i = 0; i < points.length; i++) {
+	                    var anchor = points[i];
+	                    var cacheKey = that._getMarkerCacheKey(resource, context);
+	                    var marker;
+	                    if (cacheKey) {
+	                        marker = that._markerCache[cacheKey];
+	                    }
+	                    if (!marker) {
+	                        marker = that._newResourceMarker(resource, context);
+	                        if (marker && marker.image && cacheKey) {
+	                            that._markerCache[cacheKey] = marker;
+	                            // Allow to re-use image mask to avoid cost
+	                            // re-building
+	                            context.setImageKey(marker.image);
+	                        }
+	                    }
+	                    var info = {
+	                        data : resource
+	                    };
+	                    if (marker && marker.image) {
+	                        info.image = marker.image;
+	                        info.anchor = [ anchor[0], anchor[1] ];
+	                        if (marker.anchor) {
+	                            if (marker.anchor.x !== undefined) {
+	                                info.anchor[0] -= marker.anchor.x;
+	                                info.anchor[1] -= marker.anchor.y;
+	                            } else {
+	                                info.anchor[0] -= marker.anchor[0];
+	                                info.anchor[1] -= marker.anchor[1];
+	                            }
+	                        }
+	                    }
+	                    return info;
+	                }
+	            });
+	        }
+
+	        function drawLine(points) {
+	        }
+
+	        function drawPolygon(coords) {
+	            var polygons = that._getProjectedPoints(context, coords[0]);
+	            var holes = [];
+	            for (var i = 1; i < coords.length; i++) {
+	                var hole = that._getProjectedPoints(context, coords[i]);
+	                if (hole.length) {
+	                    holes.push(hole);
+	                }
+	            }
+	            var options = that._getPolygonOptions(context, resource);
+	            utils.drawPolygon(polygons, holes, options);
+	        }
+
+	        function drawGeometry(utils, geometry) {
+	            var coords = geometry.coordinates;
+	            switch (geometry.type) {
+	            case 'Point':
+	                var point = that._getProjectedPoint(context, coords);
+	                drawPoints([ point ]);
+	                break;
+	            case 'MultiPoint':
+	                var points = that._getProjectedPoints(context, coords);
+	                drawPoints(points);
+	                break;
+	            case 'LineString':
+	                var points = that._getProjectedPoints(context, coords);
+	                drawLine(points);
+	                break;
+	            case 'MultiLineString':
+	                var points = [];
+	                for (var i = 0; i < coords.length; i++) {
+	                    var p = that._getProjectedPoints(context, coords[i]);
+	                    points = points.concat(p);
+	                }
+	                drawLine(points);
+	                break;
+	            case 'Polygon':
+	                drawPolygon(coords);
+	                break;
+	            case 'MultiPolygon':
+	                for (var i = 0; i < coords.length; i++) {
+	                    drawPolygon(coords[i]);
+	                }
+	                break;
+	            case 'GeometryCollection':
+	                var geoms = geometry.geometries;
+	                for (var i = 0, len = geoms.length; i < len; i++) {
+	                    drawGeometry(geoms[i]);
+	                }
+	                break;
+	            }
+	        }
+	    },
+
+	    _getPolygonOptions : function(context, resource) {
+	        return {
+	            fillOpacity : 0.5,
+	            fillColor : 'blue',
+	            lineColor : 'navy',
+	            lineOpacity : 1,
+	            lineWidth : 2,
+	            data : resource
+	        }
+	    },
+
+	    // ------------------------------------------------------------------
+
+	    /** Draws a line corresponding to the specified sequence of points. */
+	    _drawLine : function(context, points, resource) {
+	    },
+
+	    // ------------------------------------------------------------------
+
+	    /**
+	     * Draws a polygon corresponding to the specified filled areas and holes
+	     */
+	    _drawPolygon : function(context, polygons, holes, resource) {
+	        if (!polygons.length)
+	            return;
+	        function draw(g, coords) {
+	            if (!coords)
+	                return;
+	            g.beginPath();
+	            g.moveTo(coords[0][0], coords[0][1]);
+	            for (var i = 1; i < coords.length; i++) {
+	                g.lineTo(coords[i][0], coords[i][1]);
+	            }
+	            g.closePath();
+	        }
+	        var canvas = this._newCanvas();
+	        var size = context.getCanvasSize();
+	        canvas.width = size[0];
+	        canvas.height = size[1];
+	        var g = canvas.getContext('2d');
+
+	        g.fillStyle = 'green';
+	        g.globalAlpha = 0.5;
+	        g.globalCompositeOperation = 'source-over';
+	        draw(g, polygons);
+	        g.fill();
+
+	        g.globalCompositeOperation = 'source-out';
+	        g.globalAlpha = 1;
+	        for (var i = 0; i < holes.length; i++) {
+	            draw(g, holes[i]);
+	            g.fill();
+	        }
+
+	        context.draw(canvas, 0, 0, resource);
+	    },
+
+	    // ------------------------------------------------------------------
+	    // Markers visualization
+
+	    /**
+	     * Returns a cache key specific for the given resource type and the current
+	     * zoom level. This key is used to cache resource-specific icons for each
+	     * zoom level.
+	     */
+	    _getMarkerCacheKey : function(resource, context) {
+	        var zoom = context.options.zoom;
+	        var type = this._getResourceType(resource);
+	        var indexKey = zoom + ':' + type;
+	        return indexKey;
+	    },
+
+	    /** Returns the type (as a string) of the specified resource. */
+	    _getResourceType : function(resource) {
+	        return 'resource';
 	    },
 
 	    /**
-	     * Draws the specified image in the given position on the underlying canvas.
+	     * Draws an icon and returns information about it as an object with the
+	     * following fields: a) 'image' - an Image or a Canvas instance b) 'anchor'
+	     * a L.Point instance defining the position on the icon corresponding to the
+	     * resource coordinates
 	     */
-	    draw : function(image, x, y, data) {
-	        // Draw the image on the canvas
-	        var g = this._canvas.getContext('2d');
-	        g.drawImage(image, x, y);
+	    _newResourceMarker : function(resource, context) {
+	        var radius = this._getRadius();
+	        var canvas = this._newCanvas();
+	        var options = this._getRenderingOptions(resource, context);
+	        var lineWidth = options.lineWidth || 0;
+	        var width = radius * 2;
+	        var height = radius * 2;
+	        canvas.height = height;
+	        canvas.width = width;
+	        radius -= lineWidth;
+	        var g = canvas.getContext('2d');
+	        g.fillStyle = options.fillColor || 'white';
+	        g.globalAlpha = options.fillOpacity || 1;
+	        g.strokeStyle = options.lineColor || 'gray';
+	        g.lineWidth = lineWidth;
+	        g.lineCap = 'round';
+	        this._drawMarker(g, lineWidth, lineWidth, //
+	        width - lineWidth * 2, height - lineWidth * 2, radius * 0.6);
+	        g.fill();
+	        g.stroke();
+	        return {
+	            image : canvas,
+	            anchor : [ width / 2, height ]
+	        };
+	    },
+
+	    /** Draws a simple marker */
+	    _drawMarker : function(g, x, y, width, height, radius) {
+	        g.beginPath();
+	        // a
+	        g.moveTo(x + width / 2, y);
+	        // b
+	        g.bezierCurveTo(//
+	        x + width / 2 + radius / 2, y, //
+	        x + width / 2 + radius, y + radius / 2, //
+	        x + width / 2 + radius, y + radius);
+	        // c
+	        g.bezierCurveTo( //
+	        x + width / 2 + radius, y + radius * 2, //
+	        x + width / 2, y + height / 2 + radius / 3, //
+	        x + width / 2, y + height);
+	        // d
+	        g.bezierCurveTo(//
+	        x + width / 2, y + height / 2 + radius / 3, //
+	        x + width / 2 - radius, y + radius * 2, //
+	        x + width / 2 - radius, y + radius);
+	        // e (a)
+	        g.bezierCurveTo(//
+	        x + width / 2 - radius, y + radius / 2, //
+	        x + width / 2 - radius / 2, y + 0, //
+	        x + width / 2, y + 0);
+	        g.closePath();
+	    },
+
+	    /** Returns rendering options specific for the given resource. */
+	    _getRenderingOptions : function(resource, context) {
+	        return {};
 	    },
 
 	    /**
-	     * Returns data associated with the specified position on the canvas. This
-	     * method should be overloaded in subclasses to return real values.
+	     * This method returns an index keeping images and their corresponding
+	     * masks.
 	     */
-	    getData : function(x, y) {
-	        var result = null;
-	        return result;
+	    _getMaskIndex : function() {
+	        return this.options.maskIndex || {};
 	    },
 
-	    /**
-	     * Removes all data from internal indexes and cleans up underlying canvas.
-	     */
-	    reset : function() {
-	        var g = this._canvas.getContext('2d');
-	        g.clearRect(0, 0, this._canvas.width, this._canvas.height);
-	    },
+	    /** Creates and returns a new canvas object. */
+	    _newCanvas : function() {
+	        return document.createElement('canvas');
+	    }
+
 	});
 
-	module.exports = IIndexedCanvas;
+	module.exports = GeometryRenderer;
 
 /***/ },
 /* 8 */
 /***/ function(module, exports, __webpack_require__) {
 
-	var L = __webpack_require__(1);
-	var IIndexedCanvas = __webpack_require__(7);
-
 	/**
 	 * This utility class allows to associate data with non-transparent pixels of
 	 * images drawn on canvas.
 	 */
-	var MaskIndexedCanvas = IIndexedCanvas.extend({
+	function CanvasContext(options) {
+	    this.initialize(options);
+	}
+
+	CanvasContext.prototype = {
 
 	    /**
 	     * Initializes internal fields of this class.
@@ -977,7 +1520,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	     *            (resolution = 4)
 	     */
 	    initialize : function(options) {
-	        IIndexedCanvas.prototype.initialize.apply(this, arguments);
+	        this.options = options || {};
+	        this._canvas = this.options.canvas;
+	        this._canvasContext = this._canvas.getContext('2d');
 	        var resolution = this.options.resolution || 4;
 	        this.options.resolutionX = this.options.resolutionX || resolution;
 	        this.options.resolutionY = this.options.resolutionY || //
@@ -987,11 +1532,17 @@ return /******/ (function(modules) { // webpackBootstrap
 	        this._dataIndex = {};
 	    },
 
+	    /** Returns an array with width and height of the canvas. */
+	    getCanvasSize : function() {
+	        return [ this._canvas.width, this._canvas.height ];
+	    },
+
 	    /**
 	     * Draws the specified image in the given position on the underlying canvas.
 	     */
 	    draw : function(image, x, y, data) {
-	        IIndexedCanvas.prototype.draw.apply(this, arguments);
+	        // Draw the image on the canvas
+	        this._canvasContext.drawImage(image, x, y);
 	        // Associate non-transparent pixels of the image with data
 	        this._addToCanvasMask(image, x, y, data);
 	    },
@@ -1011,7 +1562,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	     * Removes all data from internal indexes and cleans up underlying canvas.
 	     */
 	    reset : function() {
-	        IIndexedCanvas.prototype.reset.apply(this, arguments);
+	        var g = this._canvasContext;
+	        g.clearRect(0, 0, this._canvas.width, this._canvas.height);
 	        this._dataIndex = {};
 	    },
 
@@ -1032,8 +1584,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	                continue;
 	            var x = maskShiftX + (i % imageMaskWidth);
 	            var y = maskShiftY + Math.floor(i / imageMaskWidth);
-	            if (x >= 0 && x < this._maskWidth && y >= 0 && //
-	            y < this._maskHeight) {
+	            if (x >= 0 && x < this._maskWidth && y >= 0 && y < this._maskHeight) {
 	                this._dataIndex[y * this._maskWidth + x] = data;
 	            }
 	        }
@@ -1044,23 +1595,41 @@ return /******/ (function(modules) { // webpackBootstrap
 	     */
 	    _getImageMask : function(image) {
 	        var maskIndex = this._getImageMaskIndex();
-	        if (!maskIndex) {
+	        var imageKey = this.getImageKey(image);
+	        if (!maskIndex || !imageKey) {
 	            return this._buildImageMask(image);
 	        }
-	        var imageId = this._getImageKey(image);
-	        var mask = maskIndex[imageId];
+	        var mask = maskIndex[imageKey];
 	        if (!mask) {
 	            mask = this._buildImageMask(image);
-	            maskIndex[imageId] = mask;
+	            maskIndex[imageKey] = mask;
 	        }
 	        return mask;
 	    },
 
 	    /**
-	     * Returns a unique key of the specified image.
+	     * Returns a unique key of the specified image. If this method returns
+	     * <code>null</code> then the image mask is not stored in the internal
+	     * mask cache. To allow to store the image mask in cache the image should be
+	     * 'stampted' with a new identifier using the setImageKey method..
 	     */
-	    _getImageKey : function(image) {
-	        return L.stamp(image);
+	    getImageKey : function(image) {
+	        var id = image['image-id'];
+	        return id;
+	    },
+
+	    /** Sets a new image key used to associate an image mask with this image. */
+	    setImageKey : function(image, imageKey) {
+	        var key = image['image-id'];
+	        if (!key) {
+	            if (!imageKey) {
+	                var id = CanvasContext._imageIdCounter || 0;
+	                CanvasContext._imageIdCounter = id + 1;
+	                imageKey = 'key-' + id;
+	            }
+	            key = image['image-id'] = imageKey;
+	        }
+	        return key;
 	    },
 
 	    /**
@@ -1074,33 +1643,46 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	    /** Creates and returns an image mask. */
 	    _buildImageMask : function(image) {
-	        var canvas = this._newCanvas();
+	        var canvas = this.newCanvas();
 	        var g = canvas.getContext('2d');
-	        canvas.width = image.width;
-	        canvas.height = image.height;
-	        g.drawImage(image, 0, 0);
-	        var data = g.getImageData(0, 0, image.width, image.height).data;
 	        var maskWidth = this._getMaskX(image.width);
 	        var maskHeight = this._getMaskY(image.height);
-	        var mask = new Array(image.width * image.height);
-	        for (var y = 0; y < image.height; y++) {
-	            for (var x = 0; x < image.width; x++) {
-	                var idx = (y * image.width + x) * 4 + 3; // Alpha
-	                // channel
-	                var maskX = this._getMaskX(x);
-	                var maskY = this._getMaskY(y);
-	                mask[maskY * maskWidth + maskX] = data[idx] ? 1 : 0;
+	        canvas.width = maskWidth;
+	        canvas.height = maskHeight;
+	        g.drawImage(image, 0, 0, maskWidth, maskHeight);
+	        var data = g.getImageData(0, 0, maskWidth, maskHeight).data;
+	        var mask = new Array(maskWidth * maskHeight);
+	        for (var y = 0; y < maskHeight; y++) {
+	            for (var x = 0; x < maskWidth; x++) {
+	                var idx = (y * maskWidth + x);
+	                var filled = this._checkFilledPixel(data, idx);
+	                mask[idx] = filled ? 1 : 0;
 	            }
 	        }
 	        return mask;
 	    },
 
 	    /**
+	     * Returns <code>true</code> if the specified pixel is associated with
+	     * data
+	     */
+	    _checkFilledPixel : function(data, pos) {
+	        // Check that the alpha channel is not 0 which means that this pixel is
+	        // not transparent
+	        var idx = pos * 4 + 3;
+	        return !!data[idx];
+	    },
+
+	    /**
 	     * Creates and returns a new canvas instance. Could be overloaded in
 	     * subclasses.
 	     */
-	    _newCanvas : function() {
-	        return document.createElement('canvas');
+	    newCanvas : function() {
+	        var canvas = document.createElement('canvas');
+	        var size = this.getCanvasSize();
+	        canvas.width = size[0];
+	        canvas.height = size[1];
+	        return canvas;
 	    },
 
 	    /**
@@ -1118,9 +1700,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	        var resolutionY = this.options.resolutionY;
 	        return Math.round(y / resolutionY);
 	    }
-	});
+	};
 
-	module.exports = MaskIndexedCanvas;
+	module.exports = CanvasContext;
 
 /***/ },
 /* 9 */
@@ -1132,20 +1714,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	function P(value) {
 	    return P.resolve(value);
 	}
-	P.defer = function() {
-	    var pinkyswear = __webpack_require__(12);
-	    P.defer = function() {
-	        var p = pinkyswear();
-	        return {
-	            promise : p,
-	            resolve : function(value) {
-	                p(true, [ value ]);
-	            },
-	            reject : function(reason) {
-	                p(false, [ reason ]);
-	            }
-	        };
-	    };
+	P.defer = P.deferred = function() {
+	    var Deferred = __webpack_require__(11);
+	    Deferred.SYNC = true;
+	    P.defer = Deferred;
 	    return P.defer();
 	};
 	P.then = function(onResolve, onReject) {
@@ -1153,12 +1725,12 @@ return /******/ (function(modules) { // webpackBootstrap
 	    deferred.resolve();
 	    return deferred.promise.then(onResolve, onReject);
 	};
-	P.reject = function(value) {
+	P.reject = P.rejected = function(value) {
 	    var deferred = P.defer();
 	    deferred.reject(value);
 	    return deferred.promise;
 	};
-	P.resolve = function(value) {
+	P.resolve = P.resolved = function(value) {
 	    var deferred = P.defer();
 	    deferred.resolve(value);
 	    return deferred.promise;
@@ -1291,6 +1863,110 @@ return /******/ (function(modules) { // webpackBootstrap
 
 /***/ },
 /* 11 */
+/***/ function(module, exports, __webpack_require__) {
+
+	// A very simple (< 100 LOC) promise A implementation without external dependencies.
+	// MIT license. (c) Ubimix (c) Mikhail Kotelnikov
+	module.exports = Deferred;
+	Deferred.SYNC = false;
+	function Deferred() {
+	    var slots = [];
+	    var done;
+	    var doResolve = function(result) {
+	        finish(function(slot) {
+	            if (isFunction(slot.onResolve)) {
+	                return slot.onResolve.call(undefined, result);
+	            } else {
+	                return result;
+	            }
+	        });
+	    };
+	    var doReject = function(err) {
+	        finish(function(slot) {
+	            if (isFunction(slot.onReject)) {
+	                return slot.onReject.call(undefined, err);
+	            } else {
+	                throw err;
+	            }
+	        });
+	    };
+	    return {
+	        promise : {
+	            then : function(onResolve, onReject) {
+	                var next = Deferred();
+	                slots.push({
+	                    onResolve : onResolve,
+	                    onReject : onReject,
+	                    next : next
+	                });
+	                if (done) {
+	                    done();
+	                }
+	                return next.promise;
+	            }
+	        },
+	        resolve : function(result) {
+	            doResolve(result);
+	        },
+	        reject : function(err) {
+	            doReject(err);
+	        }
+	    };
+	    function finish(action) {
+	        doResolve = doReject = function() {
+	            // throw new Error('This promise is already resolved.');
+	        };
+	        var scheduled = false;
+	        done = function() {
+	            if (scheduled) {
+	                return;
+	            }
+	            scheduled = true;
+	            Deferred.nextTick(function() {
+	                scheduled = false;
+	                var prevSlots = slots;
+	                slots = [];
+	                for (var i = 0; i < prevSlots.length; i++) {
+	                    var slot = prevSlots[i];
+	                    var next = slot.next;
+	                    try {
+	                        result = action(slot);
+	                        if (result === next) {
+	                            throw new TypeError('Can not resolve promise ' + //
+	                            'with itself');
+	                        }
+	                        var then = result ? result.then : null;
+	                        if (isFunction(then)) {
+	                            then.call(null, next.resolve, next.reject);
+	                        } else {
+	                            next.resolve.call(null, result);
+	                        }
+	                    } catch (err) {
+	                        next.reject.call(null, err);
+	                    }
+	                }
+	            });
+	        };
+	        done();
+	    }
+	    function isFunction(obj) {
+	        return typeof obj === 'function';
+	    }
+	}
+	Deferred.runSync = function() {
+	    return Deferred.SYNC;
+	}
+	Deferred.nextTick = function(action) {
+	    if (Deferred.runSync()) {
+	        action();
+	    } else {
+	        setTimeout(action, 0);
+	    }
+	};
+
+
+/***/ },
+/* 12 */
 /***/ function(module, exports, __webpack_require__) {
 
 	var __WEBPACK_AMD_DEFINE_RESULT__;/*
@@ -1880,215 +2556,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	else window.rbush = rbush;
 
 	})();
-
-
-/***/ },
-/* 12 */
-/***/ function(module, exports, __webpack_require__) {
-
-	/* WEBPACK VAR INJECTION */(function(module, process) {/*
-	 * PinkySwear.js 2.2.2 - Minimalistic implementation of the Promises/A+ spec
-	 * 
-	 * Public Domain. Use, modify and distribute it any way you like. No attribution required.
-	 *
-	 * NO WARRANTY EXPRESSED OR IMPLIED. USE AT YOUR OWN RISK.
-	 *
-	 * PinkySwear is a very small implementation of the Promises/A+ specification. After compilation with the
-	 * Google Closure Compiler and gzipping it weighs less than 500 bytes. It is based on the implementation for 
-	 * Minified.js and should be perfect for embedding. 
-	 *
-	 *
-	 * PinkySwear has just three functions.
-	 *
-	 * To create a new promise in pending state, call pinkySwear():
-	 *         var promise = pinkySwear();
-	 *
-	 * The returned object has a Promises/A+ compatible then() implementation:
-	 *          promise.then(function(value) { alert("Success!"); }, function(value) { alert("Failure!"); });
-	 *
-	 *
-	 * The promise returned by pinkySwear() is a function. To fulfill the promise, call the function with true as first argument and
-	 * an optional array of values to pass to the then() handler. By putting more than one value in the array, you can pass more than one
-	 * value to the then() handlers. Here an example to fulfill a promsise, this time with only one argument: 
-	 *         promise(true, [42]);
-	 *
-	 * When the promise has been rejected, call it with false. Again, there may be more than one argument for the then() handler:
-	 *         promise(true, [6, 6, 6]);
-	 *         
-	 * You can obtain the promise's current state by calling the function without arguments. It will be true if fulfilled,
-	 * false if rejected, and otherwise undefined.
-	 * 		   var state = promise(); 
-	 * 
-	 * https://github.com/timjansen/PinkySwear.js
-	 */
-	(function(target) {
-		var undef;
-
-		function isFunction(f) {
-			return typeof f == 'function';
-		}
-		function isObject(f) {
-			return typeof f == 'object';
-		}
-		function defer(callback) {
-			if (typeof setImmediate != 'undefined')
-				setImmediate(callback);
-			else if (typeof process != 'undefined' && process['nextTick'])
-				process['nextTick'](callback);
-			else
-				setTimeout(callback, 0);
-		}
-
-		target[0][target[1]] = function pinkySwear(extend) {
-			var state;           // undefined/null = pending, true = fulfilled, false = rejected
-			var values = [];     // an array of values as arguments for the then() handlers
-			var deferred = [];   // functions to call when set() is invoked
-
-			var set = function(newState, newValues) {
-				if (state == null && newState != null) {
-					state = newState;
-					values = newValues;
-					if (deferred.length)
-						defer(function() {
-							for (var i = 0; i < deferred.length; i++)
-								deferred[i]();
-						});
-				}
-				return state;
-			};
-
-			set['then'] = function (onFulfilled, onRejected) {
-				var promise2 = pinkySwear(extend);
-				var callCallbacks = function() {
-		    		try {
-		    			var f = (state ? onFulfilled : onRejected);
-		    			if (isFunction(f)) {
-			   				function resolve(x) {
-							    var then, cbCalled = 0;
-			   					try {
-					   				if (x && (isObject(x) || isFunction(x)) && isFunction(then = x['then'])) {
-											if (x === promise2)
-												throw new TypeError();
-											then['call'](x,
-												function() { if (!cbCalled++) resolve.apply(undef,arguments); } ,
-												function(value){ if (!cbCalled++) promise2(false,[value]);});
-					   				}
-					   				else
-					   					promise2(true, arguments);
-			   					}
-			   					catch(e) {
-			   						if (!cbCalled++)
-			   							promise2(false, [e]);
-			   					}
-			   				}
-			   				resolve(f.apply(undef, values || []));
-			   			}
-			   			else
-			   				promise2(state, values);
-					}
-					catch (e) {
-						promise2(false, [e]);
-					}
-				};
-				if (state != null)
-					defer(callCallbacks);
-				else
-					deferred.push(callCallbacks);
-				return promise2;
-			};
-	        if(extend){
-	            set = extend(set);
-	        }
-			return set;
-		};
-	})(false ? [window, 'pinkySwear'] : [module, 'exports']);
-
-	
-	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(14)(module), __webpack_require__(13)))
-
-/***/ },
-/* 13 */
-/***/ function(module, exports, __webpack_require__) {
-
-	// shim for using process in browser
-
-	var process = module.exports = {};
-
-	process.nextTick = (function () {
-	    var canSetImmediate = typeof window !== 'undefined'
-	    && window.setImmediate;
-	    var canPost = typeof window !== 'undefined'
-	    && window.postMessage && window.addEventListener
-	    ;
-
-	    if (canSetImmediate) {
-	        return function (f) { return window.setImmediate(f) };
-	    }
-
-	    if (canPost) {
-	        var queue = [];
-	        window.addEventListener('message', function (ev) {
-	            var source = ev.source;
-	            if ((source === window || source === null) && ev.data === 'process-tick') {
-	                ev.stopPropagation();
-	                if (queue.length > 0) {
-	                    var fn = queue.shift();
-	                    fn();
-	                }
-	            }
-	        }, true);
-
-	        return function nextTick(fn) {
-	            queue.push(fn);
-	            window.postMessage('process-tick', '*');
-	        };
-	    }
-
-	    return function nextTick(fn) {
-	        setTimeout(fn, 0);
-	    };
-	})();
-
-	process.title = 'browser';
-	process.browser = true;
-	process.env = {};
-	process.argv = [];
-
-	function noop() {}
-
-	process.on = noop;
-	process.addListener = noop;
-	process.once = noop;
-	process.off = noop;
-	process.removeListener = noop;
-	process.removeAllListeners = noop;
-	process.emit = noop;
-
-	process.binding = function (name) {
-	    throw new Error('process.binding is not supported');
-	}
-
-	// TODO(shtylman)
-	process.cwd = function () { return '/' };
-	process.chdir = function (dir) {
-	    throw new Error('process.chdir is not supported');
-	};
-
-
-/***/ },
-/* 14 */
-/***/ function(module, exports, __webpack_require__) {
-
-	module.exports = function(module) {
-		if(!module.webpackPolyfill) {
-			module.deprecate = function() {};
-			module.paths = [];
-			// module.parent = undefined by default
-			module.children = [];
-			module.webpackPolyfill = 1;
-		}
-		return module;
-	}
 
 
 /***/ }

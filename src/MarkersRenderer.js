@@ -23,23 +23,6 @@ var MarkersRenderer = DataRenderer.extend({
     },
 
     /**
-     * Returns position (in pixels) of the specified geographic point on the
-     * canvas tile.
-     */
-    _getPositionOnTile : function(latlng, context) {
-        var map = this._map;
-        var layer = this._layer;
-        var tileSize = context.options.tileSize;
-        var tilePoint = context.options.tilePoint;
-        var p = map.project(latlng);
-        var s = tilePoint.multiplyBy(tileSize);
-        var x = Math.round(p.x - s.x);
-        var y = Math.round(p.y - s.y);
-        var result = L.point(x, y);
-        return result;
-    },
-
-    /**
      * Draws the specified resource and returns an image with x/y position of
      * this image on the tile. If this method returns nothing (or a
      * <code>null</code> value) then nothing is drawn for the specified
@@ -58,13 +41,11 @@ var MarkersRenderer = DataRenderer.extend({
 
     /** Draws the specified resource as a marker */
     _drawResourceMarker : function(resource, context) {
-        var tilePoint = context.options.tilePoint;
-        var latlng = this._getCoordinates(resource);
-        if (!latlng) {
+        var coords = this._getCoordinates(resource);
+        if (!coords) {
             return;
         }
-
-        var anchor = this._getPositionOnTile(latlng, context);
+        var anchor = this._getProjectedPoint(context, coords);
         if (!anchor)
             return;
 
@@ -77,11 +58,13 @@ var MarkersRenderer = DataRenderer.extend({
             marker = this._newResourceMarker(resource, context);
             if (marker && marker.image && cacheKey) {
                 this._markerCache[cacheKey] = marker;
+                // Allow to re-use image mask to avoid cost re-building
+                context.setImageKey(marker.image);
             }
         }
         if (marker && marker.image) {
             var markerAnchor = L.point(marker.anchor);
-            var pos = anchor.subtract(markerAnchor);
+            var pos = L.point(anchor).subtract(markerAnchor);
             context.draw(marker.image, pos.x, pos.y, resource);
         }
     },
@@ -90,17 +73,6 @@ var MarkersRenderer = DataRenderer.extend({
     // All other methods are specific for resources corresponding to points
     // on maps and used only by the _getBoundingBox and/or by _drawFeature
     // methods.
-
-    /**
-     * Returns point a L.LatLng object with coordinates for the specified
-     * resource.
-     */
-    _getCoordinates : function(d) {
-        var bbox = DataUtils.getGeoJsonBoundingBox(d);
-        if (!bbox)
-            return null;
-        return bbox.getCenter();
-    },
 
     /** Get the radius of markers. */
     _getRadius : function(defaultValue) {
