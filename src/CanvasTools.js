@@ -275,7 +275,7 @@ CanvasTools.extend(CanvasTools.prototype, {
         if (options.fillImage) {
             styles._pattern = options.fillImage;
         }
-        if (this._isEmptyValue(styles.globalAlpha) && !styls._pattern)
+        if (this._isEmptyValue(styles.globalAlpha) && !styles._pattern)
             return null;
         return styles;
     },
@@ -290,6 +290,8 @@ CanvasTools.extend(CanvasTools.prototype, {
         styles.strokeStyle = options.lineColor || options.color || 'blue';
         styles.globalAlpha = options.lineOpacity || options.opacity || 0;
         styles.lineWidth = options.lineWidth || options.width || 0;
+        styles.lineCap = options.lineCap || 'round'; // 'butt|round|square'
+        styles.lineJoin = options.lineJoin || 'round'; // 'miter|round|bevel'
         if (this._isEmptyValue(styles.lineWidth)
                 || this._isEmptyValue(styles.globalAlpha))
             return null;
