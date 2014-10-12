@@ -182,13 +182,15 @@ return /******/ (function(modules) { // webpackBootstrap
 	    /** Activates/deactivates event management for this layer. */
 	    _initEvents : function(onoff) {
 	        var events = 'click mouseover mouseout mousemove';
-	        this._map.on(events, function(e) {
-	            if (e.type === 'click') {
-	                this._click(e);
-	            } else {
-	                this._move(e);
-	            }
-	        }, this);
+	        this._map[onoff](events, this._mouseHandler, this);
+	    },
+
+	    _mouseHandler : function(e) {
+	        if (e.type === 'click') {
+	            this._click(e);
+	        } else {
+	            this._move(e);
+	        }
 	    },
 
 	    /** Map click handler */
@@ -578,7 +580,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    },
 
 	    /**
-	     * This method is called when the paren layer is removed from the map.
+	     * This method is called when the parent layer is removed from the map.
 	     */
 	    onRemove : function(layer) {
 	        delete this._layer;
@@ -749,8 +751,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	        var geometry = resource.geometry;
 	        if (!geometry)
 	            return;
-	        console.log(this._getResourceType(resource), ' => ',
-	                resource.geometry.type);
 	        this._drawResourceMarker(resource, context);
 	    },
 
@@ -1133,9 +1133,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	    return P.resolve(value);
 	}
 	P.defer = function() {
-	    var pinkyswear = __webpack_require__(12);
+	    var pinkySwear = __webpack_require__(12);
 	    P.defer = function() {
-	        var p = pinkyswear();
+	        var p = pinkySwear();
 	        return {
 	            promise : p,
 	            resolve : function(value) {
