@@ -1,12 +1,15 @@
+var CanvasTools = require('./CanvasTools');
+
 /**
  * This utility class allows to associate data with non-transparent pixels of
  * images drawn on canvas.
  */
-function CanvasContext(options) {
-    this.initialize(options);
+function CanvasContext() {
+    CanvasTools.apply(this, arguments);
 }
-
-CanvasContext.prototype = {
+CanvasTools.extend(CanvasContext, CanvasTools);
+CanvasContext.extend(CanvasContext.prototype, CanvasTools.prototype);
+CanvasContext.extend(CanvasContext.prototype, {
 
     /**
      * Initializes internal fields of this class.
@@ -19,7 +22,7 @@ CanvasContext.prototype = {
      *            (resolution = 4)
      */
     initialize : function(options) {
-        this.options = options || {};
+        CanvasTools.prototype.initialize.apply(this, arguments);
         this._canvas = this.options.canvas;
         this._canvasContext = this._canvas.getContext('2d');
         var resolution = this.options.resolution || 4;
@@ -39,11 +42,13 @@ CanvasContext.prototype = {
     /**
      * Draws the specified image in the given position on the underlying canvas.
      */
-    draw : function(image, x, y, data) {
+    drawImage : function(image, position, options) {
+        var x = position[0];
+        var y = position[1];
         // Draw the image on the canvas
         this._canvasContext.drawImage(image, x, y);
         // Associate non-transparent pixels of the image with data
-        this._addToCanvasMask(image, x, y, data);
+        this._addToCanvasMask(image, x, y, options.data);
     },
 
     /**
@@ -83,7 +88,8 @@ CanvasContext.prototype = {
                 continue;
             var x = maskShiftX + (i % imageMaskWidth);
             var y = maskShiftY + Math.floor(i / imageMaskWidth);
-            if (x >= 0 && x < this._maskWidth && y >= 0 && y < this._maskHeight) {
+            if (x >= 0 && x < this._maskWidth && //
+            y >= 0 && y < this._maskHeight) {
                 this._dataIndex[y * this._maskWidth + x] = data;
             }
         }
@@ -117,7 +123,9 @@ CanvasContext.prototype = {
         return id;
     },
 
-    /** Sets a new image key used to associate an image mask with this image. */
+    /**
+     * Sets a new image key used to associate an image mask with this image.
+     */
     setImageKey : function(image, imageKey) {
         var key = image['image-id'];
         if (!key) {
@@ -166,7 +174,8 @@ CanvasContext.prototype = {
      * data
      */
     _checkFilledPixel : function(data, pos) {
-        // Check that the alpha channel is not 0 which means that this pixel is
+        // Check that the alpha channel is not 0 which means that this
+        // pixel is
         // not transparent
         var idx = pos * 4 + 3;
         return !!data[idx];
@@ -199,6 +208,6 @@ CanvasContext.prototype = {
         var resolutionY = this.options.resolutionY;
         return Math.round(y / resolutionY);
     }
-};
+});
 
 module.exports = CanvasContext;
