@@ -65,7 +65,9 @@ var MarkersRenderer = DataRenderer.extend({
         if (marker && marker.image) {
             var markerAnchor = L.point(marker.anchor);
             var pos = L.point(anchor).subtract(markerAnchor);
-            context.draw(marker.image, pos.x, pos.y, resource);
+            context.drawImage(marker.image, [ pos.x, pos.y ], {
+                data : resource
+            });
         }
     },
 

@@ -1,5 +1,5 @@
 /*!
- * leaflet.datalayer v0.0.4 | License: MIT 
+ * leaflet.datalayer v0.0.5 | License: MIT 
  * 
  */
 (function webpackUniversalModuleDefinition(root, factory) {
@@ -103,6 +103,8 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	        // Default size of a minimal clickable zone is 4x4 screen pixels.
 	        resolution : 4,
+	        
+	        reuseTiles : false,
 
 	        // Show pointer cursor for zones associated with data
 	        pointerCursor : true,
@@ -138,12 +140,12 @@ return /******/ (function(modules) { // webpackBootstrap
 	     */
 	    onAdd : function(map) {
 	        this._map = map;
-	        var dataRenderer = this._getDataRenderer();
+	        var dataRenderer = this.getDataRenderer();
 	        dataRenderer.onAdd(this);
 	        L.TileLayer.Canvas.prototype.onAdd.apply(this, arguments);
 	        this.on('tileunload', this._onTileUnload, this);
 	        this._initEvents('on');
-	        this.redraw();
+	        // this.redraw();
 	    },
 
 	    /**
@@ -154,8 +156,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	        this._initEvents('off');
 	        this._removeMouseCursorStyle();
 	        L.TileLayer.Canvas.prototype.onRemove.apply(this, arguments);
-	        var dataRenderer = this._getDataRenderer();
+	        var dataRenderer = this.getDataRenderer();
 	        dataRenderer.onRemove(this);
+	        delete this._map;
 	    },
 
 	    /**
@@ -287,7 +290,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    /**
 	     * Returns the underlying data provider object (a IDataProvider instance).
 	     */
-	    _getDataProvider : function() {
+	    getDataProvider : function() {
 	        if (!this.options.dataProvider) {
 	            this.options.dataProvider = new SimpleDataProvider();
 	        }
@@ -296,7 +299,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	    /** Sets the specified data and re-draws the layer. */
 	    setData : function(data) {
-	        var dataProvider = this._getDataProvider();
+	        var dataProvider = this.getDataProvider();
 	        if (dataProvider.setData) {
 	            dataProvider.setData(data);
 	            if (this._map) {
@@ -323,10 +326,12 @@ return /******/ (function(modules) { // webpackBootstrap
 	     */
 	    _redrawTile : function(canvas) {
 	        var that = this;
-	        var tilePoint = canvas._tilePoint;
+	        if (!that._map)
+	            return;
 
-	        var dataProvider = that._getDataProvider();
-	        var dataRenderer = that._getDataRenderer();
+	        var tilePoint = canvas._tilePoint;
+	        var dataProvider = that.getDataProvider();
+	        var dataRenderer = that.getDataRenderer();
 	        return P.then(function() {
 	            var bufferSize = dataRenderer.getBufferZoneSize();
 	            var bbox = that._getTileBoundingBox(tilePoint, bufferSize);
@@ -369,7 +374,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	     * Returns a IDataRenderer renderer instance responsible for data
 	     * visualization.
 	     */
-	    _getDataRenderer : function() {
+	    getDataRenderer : function() {
 	        if (!this.options.dataRenderer) {
 	            this.options.dataRenderer = new MarkersRenderer({
 	                map : this._map,
@@ -819,7 +824,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	        if (marker && marker.image) {
 	            var markerAnchor = L.point(marker.anchor);
 	            var pos = L.point(anchor).subtract(markerAnchor);
-	            context.draw(marker.image, pos.x, pos.y, resource);
+	            context.drawImage(marker.image, [ pos.x, pos.y ], {
+	                data : resource
+	            });
 	        }
 	    },
 
@@ -955,7 +962,12 @@ return /******/ (function(modules) { // webpackBootstrap
 	     * Returns a buffer zone size (in pixels) around each tile.
 	     */
 	    getBufferZoneSize : function() {
-	        var size = this._layer._getTileSize() / 4;
+	        var size = 32;
+	        if (this._layer && this._layer._map) {
+	            size = this._layer._getTileSize() / 4;
+	        } else {
+	            size = 32;
+	        }
 	        return [ size, size ];
 	    },
 
@@ -968,8 +980,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    },
 
 	    /**
-	     * Draws the specified resource on the given canvas context. This method
-	     * should be overloaded in subclasses.
+	     * Draws the specified resource on the given canvas context.
 	     * 
 	     * @param resource
 	     *            the resource to render
@@ -988,17 +999,16 @@ return /******/ (function(modules) { // webpackBootstrap
 	            var options = that._getMarkerOptions(context, resource);
 	            if (!options.image)
 	                return;
+	            if (options.reuseMask) {
+	                // Allow to re-use image mask to avoid costly mask re-building
+	                context.setImageKey(options.image);
+	            }
 	            for (var i = 0; i < points.length; i++) {
 	                var point = points[i];
 	                var anchor = [ point[0], point[1] ]; // Copy
 	                if (options.anchor) {
-	                    if (options.anchor.x !== undefined) {
-	                        anchor[0] -= options.anchor.x;
-	                        anchor[1] -= options.anchor.y;
-	                    } else {
-	                        anchor[0] -= options.anchor[0];
-	                        anchor[1] -= options.anchor[1];
-	                    }
+	                    anchor[0] -= options.anchor[0];
+	                    anchor[1] -= options.anchor[1];
 	                }
 	                context.drawImage(options.image, anchor, {
 	                    data : resource
@@ -1010,6 +1020,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	            var line = that._getProjectedPoints(context, points);
 	            var options = that._getLineOptions(context, resource);
 	            context.drawLine(points, options);
+	            context.drawImage(options.image, options.anchor, {
+	                data : resource
+	            });
 	        }
 
 	        function drawPolygon(coords) {
@@ -1023,6 +1036,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	            }
 	            var options = that._getPolygonOptions(context, resource);
 	            context.drawPolygon(polygons, holes, options);
+	            context.drawImage(options.image, options.anchor, {
+	                data : resource
+	            });
 	        }
 
 	        function drawGeometry(geometry) {
@@ -1085,7 +1101,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	        return {
 	            lineColor : 'red',
 	            lineOpacity : 1,
-	            lineWidth : 5,
+	            lineWidth : 0.8,
 	            data : resource
 	        };
 	    },
@@ -1103,20 +1119,21 @@ return /******/ (function(modules) { // webpackBootstrap
 	    _getMarkerOptions : function(context, resource) {
 	        var that = this;
 	        var cacheKey = that._getMarkerCacheKey(resource, context);
-	        var marker;
+	        var options;
 	        if (cacheKey) {
-	            marker = that._markerCache[cacheKey];
+	            options = that._markerCache[cacheKey];
 	        }
-	        if (!marker) {
-	            marker = that._newResourceMarker(resource, context);
-	            if (marker && marker.image && cacheKey) {
-	                that._markerCache[cacheKey] = marker;
-	                // Allow to re-use image mask to avoid cost
-	                // re-building
-	                context.setImageKey(marker.image);
+	        if (!options) {
+	            options = that._newResourceMarker(resource, context);
+	            if (options && options.image && cacheKey) {
+	                that._markerCache[cacheKey] = options;
+	                options.reuseMask = true;
+	            }
+	            if (options.anchor && (options.anchor.x !== undefined)) {
+	                options.anchor = [ options.anchor.x, options.anchor.y ];
 	            }
 	        }
-	        return marker;
+	        return options;
 	    },
 
 	    // ------------------------------------------------------------------
@@ -1265,12 +1282,15 @@ return /******/ (function(modules) { // webpackBootstrap
 	     * Draws the specified image in the given position on the underlying canvas.
 	     */
 	    drawImage : function(image, position, options) {
+	        if (!image || !position)
+	            return;
 	        var x = position[0];
 	        var y = position[1];
 	        // Draw the image on the canvas
 	        this._canvasContext.drawImage(image, x, y);
 	        // Associate non-transparent pixels of the image with data
-	        this._addToCanvasMask(image, x, y, options.data);
+	        var data = options && options.data;
+	        this._addToCanvasMask(image, x, y, data);
 	    },
 
 	    /**
@@ -1301,6 +1321,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	     * with canvas.
 	     */
 	    _addToCanvasMask : function(image, shiftX, shiftY, data) {
+	        var result = false;
+	        if (!data)
+	            return result;
 	        var mask = this._getImageMask(image);
 	        var imageMaskWidth = this._getMaskX(image.width);
 	        var maskShiftX = this._getMaskX(shiftX);
@@ -1313,8 +1336,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	            if (x >= 0 && x < this._maskWidth && //
 	            y >= 0 && y < this._maskHeight) {
 	                this._dataIndex[y * this._maskWidth + x] = data;
+	                result = true;
 	            }
 	        }
+	        return result;
 	    },
 
 	    /**
@@ -2260,7 +2285,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	                        }
 	                        var then = result ? result.then : null;
 	                        if (isFunction(then)) {
-	                            then.call(null, next.resolve, next.reject);
+	                            then.call(result, next.resolve, next.reject);
 	                        } else {
 	                            next.resolve.call(null, result);
 	                        }

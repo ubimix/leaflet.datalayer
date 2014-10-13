@@ -18,6 +18,8 @@ var DataLayer = L.TileLayer.Canvas.extend({
 
         // Default size of a minimal clickable zone is 4x4 screen pixels.
         resolution : 4,
+        
+        reuseTiles : false,
 
         // Show pointer cursor for zones associated with data
         pointerCursor : true,
@@ -53,12 +55,12 @@ var DataLayer = L.TileLayer.Canvas.extend({
      */
     onAdd : function(map) {
         this._map = map;
-        var dataRenderer = this._getDataRenderer();
+        var dataRenderer = this.getDataRenderer();
         dataRenderer.onAdd(this);
         L.TileLayer.Canvas.prototype.onAdd.apply(this, arguments);
         this.on('tileunload', this._onTileUnload, this);
         this._initEvents('on');
-        this.redraw();
+        // this.redraw();
     },
 
     /**
@@ -69,8 +71,9 @@ var DataLayer = L.TileLayer.Canvas.extend({
         this._initEvents('off');
         this._removeMouseCursorStyle();
         L.TileLayer.Canvas.prototype.onRemove.apply(this, arguments);
-        var dataRenderer = this._getDataRenderer();
+        var dataRenderer = this.getDataRenderer();
         dataRenderer.onRemove(this);
+        delete this._map;
     },
 
     /**
@@ -202,7 +205,7 @@ var DataLayer = L.TileLayer.Canvas.extend({
     /**
      * Returns the underlying data provider object (a IDataProvider instance).
      */
-    _getDataProvider : function() {
+    getDataProvider : function() {
         if (!this.options.dataProvider) {
             this.options.dataProvider = new SimpleDataProvider();
         }
@@ -211,7 +214,7 @@ var DataLayer = L.TileLayer.Canvas.extend({
 
     /** Sets the specified data and re-draws the layer. */
     setData : function(data) {
-        var dataProvider = this._getDataProvider();
+        var dataProvider = this.getDataProvider();
         if (dataProvider.setData) {
             dataProvider.setData(data);
             if (this._map) {
@@ -238,10 +241,12 @@ var DataLayer = L.TileLayer.Canvas.extend({
      */
     _redrawTile : function(canvas) {
         var that = this;
-        var tilePoint = canvas._tilePoint;
+        if (!that._map)
+            return;
 
-        var dataProvider = that._getDataProvider();
-        var dataRenderer = that._getDataRenderer();
+        var tilePoint = canvas._tilePoint;
+        var dataProvider = that.getDataProvider();
+        var dataRenderer = that.getDataRenderer();
         return P.then(function() {
             var bufferSize = dataRenderer.getBufferZoneSize();
             var bbox = that._getTileBoundingBox(tilePoint, bufferSize);
@@ -284,7 +289,7 @@ var DataLayer = L.TileLayer.Canvas.extend({
      * Returns a IDataRenderer renderer instance responsible for data
      * visualization.
      */
-    _getDataRenderer : function() {
+    getDataRenderer : function() {
         if (!this.options.dataRenderer) {
             this.options.dataRenderer = new MarkersRenderer({
                 map : this._map,

@@ -20,7 +20,12 @@ var GeometryRenderer = DataRenderer.extend({
      * Returns a buffer zone size (in pixels) around each tile.
      */
     getBufferZoneSize : function() {
-        var size = this._layer._getTileSize() / 4;
+        var size = 32;
+        if (this._layer && this._layer._map) {
+            size = this._layer._getTileSize() / 4;
+        } else {
+            size = 32;
+        }
         return [ size, size ];
     },
 
@@ -33,8 +38,7 @@ var GeometryRenderer = DataRenderer.extend({
     },
 
     /**
-     * Draws the specified resource on the given canvas context. This method
-     * should be overloaded in subclasses.
+     * Draws the specified resource on the given canvas context.
      * 
      * @param resource
      *            the resource to render
@@ -53,17 +57,16 @@ var GeometryRenderer = DataRenderer.extend({
             var options = that._getMarkerOptions(context, resource);
             if (!options.image)
                 return;
+            if (options.reuseMask) {
+                // Allow to re-use image mask to avoid costly mask re-building
+                context.setImageKey(options.image);
+            }
             for (var i = 0; i < points.length; i++) {
                 var point = points[i];
                 var anchor = [ point[0], point[1] ]; // Copy
                 if (options.anchor) {
-                    if (options.anchor.x !== undefined) {
-                        anchor[0] -= options.anchor.x;
-                        anchor[1] -= options.anchor.y;
-                    } else {
-                        anchor[0] -= options.anchor[0];
-                        anchor[1] -= options.anchor[1];
-                    }
+                    anchor[0] -= options.anchor[0];
+                    anchor[1] -= options.anchor[1];
                 }
                 context.drawImage(options.image, anchor, {
                     data : resource
@@ -75,6 +78,9 @@ var GeometryRenderer = DataRenderer.extend({
             var line = that._getProjectedPoints(context, points);
             var options = that._getLineOptions(context, resource);
             context.drawLine(points, options);
+            context.drawImage(options.image, options.anchor, {
+                data : resource
+            });
         }
 
         function drawPolygon(coords) {
@@ -88,6 +94,9 @@ var GeometryRenderer = DataRenderer.extend({
             }
             var options = that._getPolygonOptions(context, resource);
             context.drawPolygon(polygons, holes, options);
+            context.drawImage(options.image, options.anchor, {
+                data : resource
+            });
         }
 
         function drawGeometry(geometry) {
@@ -150,7 +159,7 @@ var GeometryRenderer = DataRenderer.extend({
         return {
             lineColor : 'red',
             lineOpacity : 1,
-            lineWidth : 5,
+            lineWidth : 0.8,
             data : resource
         };
     },
@@ -168,20 +177,21 @@ var GeometryRenderer = DataRenderer.extend({
     _getMarkerOptions : function(context, resource) {
         var that = this;
         var cacheKey = that._getMarkerCacheKey(resource, context);
-        var marker;
+        var options;
         if (cacheKey) {
-            marker = that._markerCache[cacheKey];
+            options = that._markerCache[cacheKey];
         }
-        if (!marker) {
-            marker = that._newResourceMarker(resource, context);
-            if (marker && marker.image && cacheKey) {
-                that._markerCache[cacheKey] = marker;
-                // Allow to re-use image mask to avoid cost
-                // re-building
-                context.setImageKey(marker.image);
+        if (!options) {
+            options = that._newResourceMarker(resource, context);
+            if (options && options.image && cacheKey) {
+                that._markerCache[cacheKey] = options;
+                options.reuseMask = true;
+            }
+            if (options.anchor && (options.anchor.x !== undefined)) {
+                options.anchor = [ options.anchor.x, options.anchor.y ];
             }
         }
-        return marker;
+        return options;
     },
 
     // ------------------------------------------------------------------

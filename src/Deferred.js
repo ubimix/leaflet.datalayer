@@ -70,7 +70,7 @@ function Deferred() {
                         }
                         var then = result ? result.then : null;
                         if (isFunction(then)) {
-                            then.call(null, next.resolve, next.reject);
+                            then.call(result, next.resolve, next.reject);
                         } else {
                             next.resolve.call(null, result);
                         }

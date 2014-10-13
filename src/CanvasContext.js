@@ -43,12 +43,15 @@ CanvasContext.extend(CanvasContext.prototype, {
      * Draws the specified image in the given position on the underlying canvas.
      */
     drawImage : function(image, position, options) {
+        if (!image || !position)
+            return;
         var x = position[0];
         var y = position[1];
         // Draw the image on the canvas
         this._canvasContext.drawImage(image, x, y);
         // Associate non-transparent pixels of the image with data
-        this._addToCanvasMask(image, x, y, options.data);
+        var data = options && options.data;
+        this._addToCanvasMask(image, x, y, data);
     },
 
     /**
@@ -79,6 +82,9 @@ CanvasContext.extend(CanvasContext.prototype, {
      * with canvas.
      */
     _addToCanvasMask : function(image, shiftX, shiftY, data) {
+        var result = false;
+        if (!data)
+            return result;
         var mask = this._getImageMask(image);
         var imageMaskWidth = this._getMaskX(image.width);
         var maskShiftX = this._getMaskX(shiftX);
@@ -91,8 +97,10 @@ CanvasContext.extend(CanvasContext.prototype, {
             if (x >= 0 && x < this._maskWidth && //
             y >= 0 && y < this._maskHeight) {
                 this._dataIndex[y * this._maskWidth + x] = data;
+                result = true;
             }
         }
+        return result;
     },
 
     /**

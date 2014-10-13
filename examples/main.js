@@ -52,7 +52,7 @@ function main(id) {
             var name = props.nom || props.pnr_origin;
             content = '<div><h3>' + name + '</h3></div>';
         }
-        var dataRenderer = museumsLayer._getDataRenderer()
+        var dataRenderer = museumsLayer.getDataRenderer()
         var offset = dataRenderer.getPopupOffset();
         L.popup({
             offset : offset,
