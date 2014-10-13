@@ -81,6 +81,9 @@ var DataLayer = L.TileLayer.Canvas.extend({
         initContainer.apply(this, arguments);
         var pane = this._getDataLayersPane();
         pane.appendChild(this._container);
+        if (this.options.zIndex) {
+            this._container.style.zIndex = this.options.zIndex;
+        }
     },
 
     /** Returns a pane containing all instances of this class. */
