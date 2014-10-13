@@ -1,5 +1,5 @@
 /*!
- * leaflet.datalayer v0.0.3 | License: MIT 
+ * leaflet.datalayer v0.0.4 | License: MIT 
  * 
  */
 (function webpackUniversalModuleDefinition(root, factory) {

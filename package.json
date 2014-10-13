@@ -1,6 +1,6 @@
 {
   "name": "leaflet.datalayer",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Leaflet data layer rendering information on canvas tiles",
   "homepage": "https://github.com/ubimix/leaflet.datalayer",
   "appname": "leaflet.datalayer",
