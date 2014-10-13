@@ -94,36 +94,51 @@ var GeometryRenderer = DataRenderer.extend({
             var coords = geometry.coordinates;
             switch (geometry.type) {
             case 'Point':
-                var point = that._getProjectedPoint(context, coords);
-                drawPoints([ point ]);
+                (function() {
+                    var point = that._getProjectedPoint(context, coords);
+                    drawPoints([ point ]);
+                })();
                 break;
             case 'MultiPoint':
-                var points = that._getProjectedPoints(context, coords);
-                drawPoints(points);
+                (function() {
+                    var points = that._getProjectedPoints(context, coords);
+                    drawPoints(points);
+                })();
                 break;
             case 'LineString':
-                var points = that._getProjectedPoints(context, coords);
-                drawLine(points);
+                (function() {
+                    var points = that._getProjectedPoints(context, coords);
+                    drawLine(points);
+                })();
                 break;
             case 'MultiLineString':
-                for (var i = 0; i < coords.length; i++) {
-                    var points = that._getProjectedPoints(context, coords[i]);
-                    drawLine(points);
-                }
+                (function() {
+                    for (var i = 0; i < coords.length; i++) {
+                        var points = that._getProjectedPoints(context,
+                                coords[i]);
+                        drawLine(points);
+                    }
+                })();
                 break;
             case 'Polygon':
-                drawPolygon(coords);
+                (function() {
+                    drawPolygon(coords);
+                })();
                 break;
             case 'MultiPolygon':
-                for (var i = 0; i < coords.length; i++) {
-                    drawPolygon(coords[i]);
-                }
+                (function() {
+                    for (var i = 0; i < coords.length; i++) {
+                        drawPolygon(coords[i]);
+                    }
+                })();
                 break;
             case 'GeometryCollection':
-                var geoms = geometry.geometries;
-                for (var i = 0, len = geoms.length; i < len; i++) {
-                    drawGeometry(geoms[i]);
-                }
+                (function() {
+                    var geoms = geometry.geometries;
+                    for (var i = 0, len = geoms.length; i < len; i++) {
+                        drawGeometry(geoms[i]);
+                    }
+                })();
                 break;
             }
         }
@@ -137,7 +152,7 @@ var GeometryRenderer = DataRenderer.extend({
             lineOpacity : 1,
             lineWidth : 5,
             data : resource
-        }
+        };
     },
     _getPolygonOptions : function(context, resource) {
         return {
@@ -147,7 +162,7 @@ var GeometryRenderer = DataRenderer.extend({
             lineOpacity : 1,
             lineWidth : 1,
             data : resource
-        }
+        };
     },
 
     _getMarkerOptions : function(context, resource) {

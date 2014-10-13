@@ -88,7 +88,7 @@ function Deferred() {
 }
 Deferred.runSync = function() {
     return Deferred.SYNC;
-}
+};
 Deferred.nextTick = function(action) {
     if (Deferred.runSync()) {
         action();

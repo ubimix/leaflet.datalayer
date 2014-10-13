@@ -166,6 +166,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	        initContainer.apply(this, arguments);
 	        var pane = this._getDataLayersPane();
 	        pane.appendChild(this._container);
+	        if (this.options.zIndex) {
+	            this._container.style.zIndex = this.options.zIndex;
+	        }
 	    },
 
 	    /** Returns a pane containing all instances of this class. */
@@ -934,9 +937,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	var DataRenderer = __webpack_require__(4);
 	var P = __webpack_require__(9);
 
-	var PATTERN = new Image();
-	PATTERN.src = "./img_lamp.jpg";
-
 	/**
 	 * A common interface visualizing data on canvas.
 	 */
@@ -985,51 +985,35 @@ return /******/ (function(modules) { // webpackBootstrap
 	        return;
 
 	        function drawPoints(points) {
+	            var options = that._getMarkerOptions(context, resource);
+	            if (!options.image)
+	                return;
 	            for (var i = 0; i < points.length; i++) {
-	                var anchor = points[i];
-	                var cacheKey = that._getMarkerCacheKey(resource, context);
-	                var marker;
-	                if (cacheKey) {
-	                    marker = that._markerCache[cacheKey];
-	                }
-	                if (!marker) {
-	                    marker = that._newResourceMarker(resource, context);
-	                    if (marker && marker.image && cacheKey) {
-	                        that._markerCache[cacheKey] = marker;
-	                        // Allow to re-use image mask to avoid cost
-	                        // re-building
-	                        context.setImageKey(marker.image);
+	                var point = points[i];
+	                var anchor = [ point[0], point[1] ]; // Copy
+	                if (options.anchor) {
+	                    if (options.anchor.x !== undefined) {
+	                        anchor[0] -= options.anchor.x;
+	                        anchor[1] -= options.anchor.y;
+	                    } else {
+	                        anchor[0] -= options.anchor[0];
+	                        anchor[1] -= options.anchor[1];
 	                    }
 	                }
-	                if (marker && marker.image) {
-	                    var anchor = [ anchor[0], anchor[1] ];
-	                    if (marker.anchor) {
-	                        if (marker.anchor.x !== undefined) {
-	                            anchor[0] -= marker.anchor.x;
-	                            anchor[1] -= marker.anchor.y;
-	                        } else {
-	                            anchor[0] -= marker.anchor[0];
-	                            anchor[1] -= marker.anchor[1];
-	                        }
-	                    }
-	                    context.drawImage(marker.image, anchor, {
-	                        data : resource
-	                    });
-	                }
+	                context.drawImage(options.image, anchor, {
+	                    data : resource
+	                });
 	            }
 	        }
 
 	        function drawLine(points) {
+	            var line = that._getProjectedPoints(context, points);
+	            var options = that._getLineOptions(context, resource);
+	            context.drawLine(points, options);
 	        }
 
 	        function drawPolygon(coords) {
 	            var polygons = that._getProjectedPoints(context, coords[0]);
-	            
-	//            var options = that._getPolygonOptions(context, resource);
-	//            options.lineColor = 'red';
-	//            context.drawLine(polygons, options);
-	//            return;
-
 	            var holes = [];
 	            for (var i = 1; i < coords.length; i++) {
 	                var hole = that._getProjectedPoints(context, coords[i]);
@@ -1045,43 +1029,66 @@ return /******/ (function(modules) { // webpackBootstrap
 	            var coords = geometry.coordinates;
 	            switch (geometry.type) {
 	            case 'Point':
-	                var point = that._getProjectedPoint(context, coords);
-	                drawPoints([ point ]);
+	                (function() {
+	                    var point = that._getProjectedPoint(context, coords);
+	                    drawPoints([ point ]);
+	                })();
 	                break;
 	            case 'MultiPoint':
-	                var points = that._getProjectedPoints(context, coords);
-	                drawPoints(points);
+	                (function() {
+	                    var points = that._getProjectedPoints(context, coords);
+	                    drawPoints(points);
+	                })();
 	                break;
 	            case 'LineString':
-	                var points = that._getProjectedPoints(context, coords);
-	                drawLine(points);
+	                (function() {
+	                    var points = that._getProjectedPoints(context, coords);
+	                    drawLine(points);
+	                })();
 	                break;
 	            case 'MultiLineString':
-	                var points = [];
-	                for (var i = 0; i < coords.length; i++) {
-	                    var p = that._getProjectedPoints(context, coords[i]);
-	                    points = points.concat(p);
-	                }
-	                drawLine(points);
+	                (function() {
+	                    for (var i = 0; i < coords.length; i++) {
+	                        var points = that._getProjectedPoints(context,
+	                                coords[i]);
+	                        drawLine(points);
+	                    }
+	                })();
 	                break;
 	            case 'Polygon':
-	                drawPolygon(coords);
+	                (function() {
+	                    drawPolygon(coords);
+	                })();
 	                break;
 	            case 'MultiPolygon':
-	                for (var i = 0; i < coords.length; i++) {
-	                    drawPolygon(coords[i]);
-	                }
+	                (function() {
+	                    for (var i = 0; i < coords.length; i++) {
+	                        drawPolygon(coords[i]);
+	                    }
+	                })();
 	                break;
 	            case 'GeometryCollection':
-	                var geoms = geometry.geometries;
-	                for (var i = 0, len = geoms.length; i < len; i++) {
-	                    drawGeometry(geoms[i]);
-	                }
+	                (function() {
+	                    var geoms = geometry.geometries;
+	                    for (var i = 0, len = geoms.length; i < len; i++) {
+	                        drawGeometry(geoms[i]);
+	                    }
+	                })();
 	                break;
 	            }
 	        }
 	    },
 
+	    // ------------------------------------------------------------------
+
+	    _getLineOptions : function(context, resource) {
+	        return {
+	            lineColor : 'red',
+	            lineOpacity : 1,
+	            lineWidth : 5,
+	            data : resource
+	        };
+	    },
 	    _getPolygonOptions : function(context, resource) {
 	        return {
 	            fillOpacity : 0.3,
@@ -1089,55 +1096,27 @@ return /******/ (function(modules) { // webpackBootstrap
 	            lineColor : 'white',
 	            lineOpacity : 1,
 	            lineWidth : 1,
-	            // fillImage : PATTERN,
 	            data : resource
+	        };
+	    },
+
+	    _getMarkerOptions : function(context, resource) {
+	        var that = this;
+	        var cacheKey = that._getMarkerCacheKey(resource, context);
+	        var marker;
+	        if (cacheKey) {
+	            marker = that._markerCache[cacheKey];
 	        }
-	    },
-
-	    // ------------------------------------------------------------------
-
-	    /** Draws a line corresponding to the specified sequence of points. */
-	    _drawLine : function(context, points, resource) {
-	    },
-
-	    // ------------------------------------------------------------------
-
-	    /**
-	     * Draws a polygon corresponding to the specified filled areas and holes
-	     */
-	    _drawPolygon : function(context, polygons, holes, resource) {
-	        if (!polygons.length)
-	            return;
-	        function draw(g, coords) {
-	            if (!coords)
-	                return;
-	            g.beginPath();
-	            g.moveTo(coords[0][0], coords[0][1]);
-	            for (var i = 1; i < coords.length; i++) {
-	                g.lineTo(coords[i][0], coords[i][1]);
+	        if (!marker) {
+	            marker = that._newResourceMarker(resource, context);
+	            if (marker && marker.image && cacheKey) {
+	                that._markerCache[cacheKey] = marker;
+	                // Allow to re-use image mask to avoid cost
+	                // re-building
+	                context.setImageKey(marker.image);
 	            }
-	            g.closePath();
 	        }
-	        var canvas = this._newCanvas();
-	        var size = context.getCanvasSize();
-	        canvas.width = size[0];
-	        canvas.height = size[1];
-	        var g = canvas.getContext('2d');
-
-	        g.fillStyle = 'green';
-	        g.globalAlpha = 0.5;
-	        g.globalCompositeOperation = 'source-over';
-	        draw(g, polygons);
-	        g.fill();
-
-	        g.globalCompositeOperation = 'source-out';
-	        g.globalAlpha = 1;
-	        for (var i = 0; i < holes.length; i++) {
-	            draw(g, holes[i]);
-	            g.fill();
-	        }
-
-	        context.draw(canvas, 0, 0, resource);
+	        return marker;
 	    },
 
 	    // ------------------------------------------------------------------
@@ -1168,7 +1147,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	     */
 	    _newResourceMarker : function(resource, context) {
 	        var radius = this._getRadius();
-	        var canvas = this._newCanvas();
+	        var canvas = context.newCanvas();
 	        var options = this._getRenderingOptions(resource, context);
 	        var lineWidth = options.lineWidth || 0;
 	        var width = radius * 2;
@@ -1232,11 +1211,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	    _getMaskIndex : function() {
 	        return this.options.maskIndex || {};
 	    },
-
-	    /** Creates and returns a new canvas object. */
-	    _newCanvas : function() {
-	        return document.createElement('canvas');
-	    }
 
 	});
 
@@ -1694,10 +1668,12 @@ return /******/ (function(modules) { // webpackBootstrap
 	        var canvas = this.newCanvas();
 	        var g = canvas.getContext('2d');
 
+	        var i;
+
 	        // Simplify lines
 	        polygons = this._simplify(polygons);
 	        holes = holes || [];
-	        for (var i = 0; i < holes.length; i++) {
+	        for (i = 0; i < holes.length; i++) {
 	            holes[i] = this._simplify(holes[i]);
 	        }
 
@@ -1706,7 +1682,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	        // Draw lines around the polygon (external lines + lines
 	        // around holes)
 	        drawn |= this._drawLines(g, polygons, strokeStyles);
-	        for (var i = 0; i < holes.length; i++) {
+	        for (i = 0; i < holes.length; i++) {
 	            drawn |= this._drawLines(g, holes[i], strokeStyles);
 	        }
 	        // Draw image on the main canvas
@@ -1790,10 +1766,12 @@ return /******/ (function(modules) { // webpackBootstrap
 	        var boundingPolygon = this._getBoundingPolygon(bufferZone);
 	        var clippedPolygons = polygons ? CanvasTools.clipPolygon(polygons,
 	                boundingPolygon) : [];
+
+	        var i;
 	        // Calculate clipped holes
 	        var clippedHoles = [];
 	        var len = holes ? holes.length : 0;
-	        for (var i = 0; i < len; i++) {
+	        for (i = 0; i < len; i++) {
 	            var hole = CanvasTools.clipPolygon(holes[i], boundingPolygon);
 	            if (hole.length) {
 	                clippedHoles.push(hole);
@@ -1812,7 +1790,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	        // Remove holes areas from the polygon
 	        g.globalCompositeOperation = 'destination-out';
 	        g.globalAlpha = 1;
-	        for (var i = 0; i < clippedHoles.length; i++) {
+	        for (i = 0; i < clippedHoles.length; i++) {
 	            if (clippedHoles[i].length) {
 	                this._trace(g, clippedHoles[i], true);
 	                g.fill();
@@ -1887,7 +1865,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	        if (options.fillImage) {
 	            styles._pattern = options.fillImage;
 	        }
-	        if (this._isEmptyValue(styles.globalAlpha) && !styls._pattern)
+	        if (this._isEmptyValue(styles.globalAlpha) && !styles._pattern)
 	            return null;
 	        return styles;
 	    },
@@ -1902,8 +1880,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	        styles.strokeStyle = options.lineColor || options.color || 'blue';
 	        styles.globalAlpha = options.lineOpacity || options.opacity || 0;
 	        styles.lineWidth = options.lineWidth || options.width || 0;
-	        if (this._isEmptyValue(styles.lineWidth)
-	                || this._isEmptyValue(styles.globalAlpha))
+	        styles.lineCap = options.lineCap || 'round'; // 'butt|round|square'
+	        styles.lineJoin = options.lineJoin || 'round'; // 'miter|round|bevel'
+	        if (this._isEmptyValue(styles.lineWidth) || //
+	        this._isEmptyValue(styles.globalAlpha))
 	            return null;
 	        return styles;
 	    },
@@ -2006,7 +1986,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	            } while (!done);
 	            var result = [ [ x1, y1 ], [ x2, y2 ] ];
 	            return accept ? result : null;
-	        }
+	        };
 	    })(),
 
 	    // Sutherland Hodgman polygon clipping algorithm
@@ -2029,15 +2009,15 @@ return /******/ (function(modules) { // webpackBootstrap
 	        };
 	        var outputList = subjectPolygon;
 	        cp1 = clipPolygon[clipPolygon.length - 1];
-	        for (j in clipPolygon) {
-	            var cp2 = clipPolygon[j];
+	        for ( var j in clipPolygon) {
+	            cp2 = clipPolygon[j];
 	            var inputList = outputList;
 	            outputList = [];
 	            s = inputList[inputList.length - 1]; // last on
 	            // the input
 	            // list
-	            for (i in inputList) {
-	                var e = inputList[i];
+	            for ( var i in inputList) {
+	                e = inputList[i];
 	                if (inside(e)) {
 	                    if (!inside(s)) {
 	                        outputList.push(intersection());
@@ -2091,8 +2071,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	        function getSqSegDist(p, p1, p2) {
 	            var x = p1[0], y = p1[1], dx = p2[0] - x, dy = p2[1] - y;
 	            if (dx !== 0 || dy !== 0) {
-	                var t = ((p[0] - x) * dx + (p[1] - y) * dy)
-	                        / (dx * dx + dy * dy);
+	                var t = ((p[0] - x) * dx + (p[1] - y) * dy) / //
+	                (dx * dx + dy * dy);
 
 	                if (t > 1) {
 	                    x = p2[0];
@@ -2298,7 +2278,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	}
 	Deferred.runSync = function() {
 	    return Deferred.SYNC;
-	}
+	};
 	Deferred.nextTick = function(action) {
 	    if (Deferred.runSync()) {
 	        action();

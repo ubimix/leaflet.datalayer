@@ -82,10 +82,12 @@ CanvasTools.extend(CanvasTools.prototype, {
         var canvas = this.newCanvas();
         var g = canvas.getContext('2d');
 
+        var i;
+
         // Simplify lines
         polygons = this._simplify(polygons);
         holes = holes || [];
-        for (var i = 0; i < holes.length; i++) {
+        for (i = 0; i < holes.length; i++) {
             holes[i] = this._simplify(holes[i]);
         }
 
@@ -94,7 +96,7 @@ CanvasTools.extend(CanvasTools.prototype, {
         // Draw lines around the polygon (external lines + lines
         // around holes)
         drawn |= this._drawLines(g, polygons, strokeStyles);
-        for (var i = 0; i < holes.length; i++) {
+        for (i = 0; i < holes.length; i++) {
             drawn |= this._drawLines(g, holes[i], strokeStyles);
         }
         // Draw image on the main canvas
@@ -178,10 +180,12 @@ CanvasTools.extend(CanvasTools.prototype, {
         var boundingPolygon = this._getBoundingPolygon(bufferZone);
         var clippedPolygons = polygons ? CanvasTools.clipPolygon(polygons,
                 boundingPolygon) : [];
+
+        var i;
         // Calculate clipped holes
         var clippedHoles = [];
         var len = holes ? holes.length : 0;
-        for (var i = 0; i < len; i++) {
+        for (i = 0; i < len; i++) {
             var hole = CanvasTools.clipPolygon(holes[i], boundingPolygon);
             if (hole.length) {
                 clippedHoles.push(hole);
@@ -200,7 +204,7 @@ CanvasTools.extend(CanvasTools.prototype, {
         // Remove holes areas from the polygon
         g.globalCompositeOperation = 'destination-out';
         g.globalAlpha = 1;
-        for (var i = 0; i < clippedHoles.length; i++) {
+        for (i = 0; i < clippedHoles.length; i++) {
             if (clippedHoles[i].length) {
                 this._trace(g, clippedHoles[i], true);
                 g.fill();
@@ -292,8 +296,8 @@ CanvasTools.extend(CanvasTools.prototype, {
         styles.lineWidth = options.lineWidth || options.width || 0;
         styles.lineCap = options.lineCap || 'round'; // 'butt|round|square'
         styles.lineJoin = options.lineJoin || 'round'; // 'miter|round|bevel'
-        if (this._isEmptyValue(styles.lineWidth)
-                || this._isEmptyValue(styles.globalAlpha))
+        if (this._isEmptyValue(styles.lineWidth) || //
+        this._isEmptyValue(styles.globalAlpha))
             return null;
         return styles;
     },
@@ -396,7 +400,7 @@ CanvasTools.extend(CanvasTools, {
             } while (!done);
             var result = [ [ x1, y1 ], [ x2, y2 ] ];
             return accept ? result : null;
-        }
+        };
     })(),
 
     // Sutherland Hodgman polygon clipping algorithm
@@ -419,15 +423,15 @@ CanvasTools.extend(CanvasTools, {
         };
         var outputList = subjectPolygon;
         cp1 = clipPolygon[clipPolygon.length - 1];
-        for (j in clipPolygon) {
-            var cp2 = clipPolygon[j];
+        for ( var j in clipPolygon) {
+            cp2 = clipPolygon[j];
             var inputList = outputList;
             outputList = [];
             s = inputList[inputList.length - 1]; // last on
             // the input
             // list
-            for (i in inputList) {
-                var e = inputList[i];
+            for ( var i in inputList) {
+                e = inputList[i];
                 if (inside(e)) {
                     if (!inside(s)) {
                         outputList.push(intersection());
@@ -481,8 +485,8 @@ CanvasTools.extend(CanvasTools, {
         function getSqSegDist(p, p1, p2) {
             var x = p1[0], y = p1[1], dx = p2[0] - x, dy = p2[1] - y;
             if (dx !== 0 || dy !== 0) {
-                var t = ((p[0] - x) * dx + (p[1] - y) * dy)
-                        / (dx * dx + dy * dy);
+                var t = ((p[0] - x) * dx + (p[1] - y) * dy) / //
+                (dx * dx + dy * dy);
 
                 if (t > 1) {
                     x = p2[0];
