@@ -11,21 +11,16 @@ var P = require('./P');
  * responsible for data visualization on canvas tiles; by default a
  * MarkersRenderer instance is used
  */
-var DataLayer = L.TileLayer.Canvas.extend({
+var DataLayer = L.GridLayer.extend({
 
     /** Default options of this class. */
     options : {
 
         // Default size of a minimal clickable zone is 4x4 screen pixels.
         resolution : 4,
-        
-        reuseTiles : false,
 
         // Show pointer cursor for zones associated with data
         pointerCursor : true,
-
-        // Asynchronous tiles drawing
-        async : false,
 
         // Use a global (per layer) index of masks.
         // Should be set to false if all data have individual
@@ -40,7 +35,7 @@ var DataLayer = L.TileLayer.Canvas.extend({
         options.fillOpacity = options.opacity;
         delete options.opacity;
         var url = null;
-        L.TileLayer.Canvas.prototype.initialize.apply(this, url, options);
+        L.GridLayer.prototype.initialize.apply(this, url, options);
         L.setOptions(this, options);
         if (this.options.data) {
             this.setData(this.options.data);
@@ -57,7 +52,7 @@ var DataLayer = L.TileLayer.Canvas.extend({
         this._map = map;
         var dataRenderer = this.getDataRenderer();
         dataRenderer.onAdd(this);
-        L.TileLayer.Canvas.prototype.onAdd.apply(this, arguments);
+        L.GridLayer.prototype.onAdd.apply(this, arguments);
         this.on('tileunload', this._onTileUnload, this);
         this._initEvents('on');
         // this.redraw();
@@ -70,23 +65,34 @@ var DataLayer = L.TileLayer.Canvas.extend({
         this.off('tileunload', this._onTileUnload, this);
         this._initEvents('off');
         this._removeMouseCursorStyle();
-        L.TileLayer.Canvas.prototype.onRemove.apply(this, arguments);
+        L.GridLayer.prototype.onRemove.apply(this, arguments);
         var dataRenderer = this.getDataRenderer();
         dataRenderer.onRemove(this);
         delete this._map;
+    },
+
+    /** Creates and returns a new tile canvas */
+    createTile : function(coords, done) {
+        var canvas = L.DomUtil.create('canvas', 'leaflet-tile');
+        var tileSize = this._getTileSize();
+        canvas.width = tileSize;
+        canvas.height = tileSize;
+        canvas.onselectstart = canvas.onmousemove = L.Util.falseFn;
+        this._redrawTile(canvas, coords, done);
+        return canvas;
     },
 
     /**
      * Initializes container for tiles.
      */
     _initContainer : function() {
-        var initContainer = L.TileLayer.Canvas.prototype._initContainer;
+        var initContainer = L.GridLayer.prototype._initContainer;
         initContainer.apply(this, arguments);
         var pane = this._getDataLayersPane();
         pane.appendChild(this._container);
-        if (this.options.zIndex) {
-            this._container.style.zIndex = this.options.zIndex;
-        }
+//        if (this.options.zIndex) {
+//            this._container.style.zIndex = this.options.zIndex;
+//        }
     },
 
     /** Returns a pane containing all instances of this class. */
@@ -239,12 +245,10 @@ var DataLayer = L.TileLayer.Canvas.extend({
      * This method is used to draw on canvas tiles. It is invoked by the parent
      * L.TileLayer.Canvas class.
      */
-    _redrawTile : function(canvas) {
+    _redrawTile : function(canvas, tilePoint, done) {
         var that = this;
         if (!that._map)
             return;
-
-        var tilePoint = canvas._tilePoint;
         var dataProvider = that.getDataProvider();
         var dataRenderer = that.getDataRenderer();
         return P.then(function() {
@@ -267,22 +271,10 @@ var DataLayer = L.TileLayer.Canvas.extend({
             });
         }).then(function(context) {
             canvas._index = context;
-            that.tileDrawn(canvas);
+            done(null, canvas);
         }, function(err) {
-            try {
-                that._handleRenderError(canvas, tilePoint, err);
-            } finally {
-                that.tileDrawn(canvas);
-            }
+            done(err, canvas);
         });
-    },
-
-    /**
-     * Reports a rendering error
-     */
-    _handleRenderError : function(canvas, tilePoint, err) {
-        // TODO: visualize the error on the canvas
-        console.log('ERROR', err);
     },
 
     /**
