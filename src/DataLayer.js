@@ -49,7 +49,6 @@ var DataLayer = L.GridLayer.extend({
      * This method is called when this layer is added to the map.
      */
     onAdd : function(map) {
-        this._map = map;
         var dataRenderer = this.getDataRenderer();
         dataRenderer.onAdd(this);
         L.GridLayer.prototype.onAdd.apply(this, arguments);
@@ -68,7 +67,6 @@ var DataLayer = L.GridLayer.extend({
         L.GridLayer.prototype.onRemove.apply(this, arguments);
         var dataRenderer = this.getDataRenderer();
         dataRenderer.onRemove(this);
-        delete this._map;
     },
 
     /** Creates and returns a new tile canvas */
@@ -90,14 +88,14 @@ var DataLayer = L.GridLayer.extend({
         initContainer.apply(this, arguments);
         var pane = this._getDataLayersPane();
         pane.appendChild(this._container);
-//        if (this.options.zIndex) {
-//            this._container.style.zIndex = this.options.zIndex;
-//        }
+        // if (this.options.zIndex) {
+        // this._container.style.zIndex = this.options.zIndex;
+        // }
     },
 
     /** Returns a pane containing all instances of this class. */
     _getDataLayersPane : function() {
-        return this._map._panes.markerPane;
+        return this.getPane('overlayPane');
     },
 
     // --------------------------------------------------------------------
@@ -111,10 +109,11 @@ var DataLayer = L.GridLayer.extend({
 
     _mouseHandler : function(e) {
         if (e.type === 'click') {
-            this._click(e);
+            return this._click(e);
         } else {
-            this._move(e);
+            return this._move(e);
         }
+        return true;
     },
 
     /** Map click handler */
