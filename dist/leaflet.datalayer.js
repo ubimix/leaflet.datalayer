@@ -69,6 +69,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	DataLayer.CanvasContext = __webpack_require__(8);
 	DataLayer.P = DataLayer.Promise = L.Promise = __webpack_require__(9);
 	DataLayer.DataUtils = __webpack_require__(10);
+	DataLayer.GeoJsonRenderer = __webpack_require__(11);
 
 	module.exports = L.DataLayer = DataLayer;
 
@@ -173,23 +174,74 @@ return /******/ (function(modules) { // webpackBootstrap
 	        initContainer.apply(this, arguments);
 	        var pane = this._getDataLayersPane();
 	        pane.appendChild(this._container);
-	        // if (this.options.zIndex) {
-	        // this._container.style.zIndex = this.options.zIndex;
-	        // }
+	        this._updateZIndex();
 	    },
 
 	    /** Returns a pane containing all instances of this class. */
 	    _getDataLayersPane : function() {
 	        return this.getPane('overlayPane');
+	        // return this.getPane('tilePane');
+	    },
+
+	    /** Checks and updates the z-index of this layer. */
+	    _updateZIndex : function() {
+	        if (this.options.zIndex) {
+	            this._container.style.zIndex = this.options.zIndex;
+	        }
 	    },
 
 	    // --------------------------------------------------------------------
 	    // Event management
 
-	    /** Activates/deactivates event management for this layer. */
-	    _initEvents : function(onoff) {
+	    /**
+	     * Returns a singlethon instance (one per map) of an object responsible for
+	     * dispatching map events between individual data layers.
+	     */
+	    _getSinglethonEventDispatcher : function(map, create) {
+	        if (map.__dataLayerHandlers) {
+	            return map.__dataLayerHandlers;
+	        }
 	        var events = 'click mouseover mouseout mousemove';
-	        this._map[onoff](events, this._mouseHandler, this);
+	        var handlers = [];
+	        function on(handler, context) {
+	            if (!handlers.length) {
+	                map.on(events, dispatch);
+	            }
+	            var slot = {
+	                handler : handler,
+	                context : context
+	            };
+	            handlers.push(slot);
+	        }
+	        function off(handler, context) {
+	            for (var i = handlers.length - 1; i >= 0; i--) {
+	                var slot = handlers[i];
+	                if (slot.handler === handler && slot.context === context) {
+	                    handlers.splice(i, 1);
+	                }
+	            }
+	            if (!handlers.length) {
+	                map.off(events, dispatch);
+	                delete map.__dataLayerHandlers;
+	            }
+	        }
+	        function dispatch(ev) {
+	            for (var i = handlers.length - 1; i >= 0; i--) {
+	                var slot = handlers[i];
+	                slot.handler.call(slot.context, ev);
+	            }
+	        }
+	        map.__dataLayerHandlers = {
+	            on : on,
+	            off : off
+	        };
+	        return map.__dataLayerHandlers;
+	    },
+
+	    /** Activates/deactivates event management for this layer. */
+	    _initEvents : function(type) {
+	        var dispatcher = this._getSinglethonEventDispatcher(this._map);
+	        dispatcher[type](this._mouseHandler, this);
 	    },
 
 	    _mouseHandler : function(e) {
@@ -646,7 +698,7 @@ return /******/ (function(modules) { // webpackBootstrap
 /* 5 */
 /***/ function(module, exports, __webpack_require__) {
 
-	var rbush = __webpack_require__(13);
+	var rbush = __webpack_require__(14);
 	var IDataProvider = __webpack_require__(3);
 	var DataUtils = __webpack_require__(10);
 	var P = __webpack_require__(9);
@@ -1228,7 +1280,7 @@ return /******/ (function(modules) { // webpackBootstrap
 /* 8 */
 /***/ function(module, exports, __webpack_require__) {
 
-	var CanvasTools = __webpack_require__(11);
+	var CanvasTools = __webpack_require__(12);
 
 	/**
 	 * This utility class allows to associate data with non-transparent pixels of
@@ -1450,7 +1502,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    return P.resolve(value);
 	}
 	P.defer = P.deferred = function() {
-	    var Deferred = __webpack_require__(12);
+	    var Deferred = __webpack_require__(13);
 	//    Deferred.SYNC = true;
 	    P.defer = Deferred;
 	    return P.defer();
@@ -1598,6 +1650,172 @@ return /******/ (function(modules) { // webpackBootstrap
 
 /***/ },
 /* 11 */
+/***/ function(module, exports, __webpack_require__) {
+
+	module.exports = GeoJsonRenderer;
+
+	function GeoJsonRenderer() {
+	}
+
+	GeoJsonRenderer.prototype = {
+
+	    build : function(resource) {
+	        return GeoJsonRenderer.build(this, resource);
+	    },
+
+	    /**
+	     * Creates and returns a group corresponding to the specified resource and
+	     * containing all given features.
+	     */
+	    buildGroup : function(resource, features) {
+	        return;
+	    },
+
+	    /**
+	     * Creates and returns a marker object corresponding to the specified
+	     * resource with the given coordinates.
+	     */
+	    buildMarker : function(resource, coords) {
+	        return;
+	    },
+
+	    /** Draws a line corresponding to the specified sequence of points */
+	    buildLine : function(resource, coords) {
+	        return;
+	    },
+
+	    /**
+	     * Creates and returns a polygon with holes corresponding to the specified
+	     * resource.
+	     */
+	    buildPolygon : function(resource, coords, holes) {
+	        return;
+	    },
+
+	    /** Returns points corresponding to the given coordinates. */
+	    getProjectedPoints : function(coords) {
+	        return coords;
+	    },
+
+	};
+
+	/**
+	 * Builds a layer object corresponding to the specified resource.
+	 * 
+	 * @param factory
+	 *            creating new layers
+	 * @param resource
+	 *            the resource to render
+	 */
+	GeoJsonRenderer.build = function(factory, resource) {
+	    var that = this;
+	    var geometry = resource.geometry;
+	    if (!geometry) return;
+	    return buildGeometryLayer(geometry);
+
+	    /** Returns a valid layer corresponding to the specified features. */
+	    function getFeature(list) {
+	        if (list.length === 0) {
+	            return;
+	        } else if (list.length == 1) {
+	            return list[0];
+	        } else {
+	            return factory.buildGroup(resource, list);
+	        }
+	    }
+
+	    /** Draws a polygon corresponding to the specified coordinates. */
+	    function drawPolygon(coords) {
+	        var polygons = factory.getProjectedPoints(coords[0]);
+	        var holes = [];
+	        for (var i = 1; i < coords.length; i++) {
+	            var hole = factory.getProjectedPoints(coords[i]);
+	            if (hole && hole.length) {
+	                holes.push(hole);
+	            }
+	        }
+	        return factory.buildPolygon(resource, polygons, holes);
+	    }
+
+	    function buildGeometryLayer(geometry) {
+	        var result;
+	        var coords = geometry.coordinates;
+	        switch (geometry.type) {
+	            case 'Point':
+	                (function() {
+	                    var points = factory.getProjectedPoints([ coords ]);
+	                    if (points && points.length) {
+	                        result = factory.buildMarker(resource, points[0]);
+	                    }
+	                })();
+	                break;
+	            case 'MultiPoint':
+	                (function() {
+	                    var points = factory.getProjectedPoints(coords);
+	                    var markers = [];
+	                    for (var i = 0; i < points.length; i++) {
+	                        var point = points[i];
+	                        var marker = factory.buildMarker(resource, point);
+	                        markers.push(marker);
+	                    }
+	                    result = getFeature(markers);
+	                })();
+	                break;
+	            case 'LineString':
+	                (function() {
+	                    var points = factory.getProjectedPoints(coords);
+	                    result = factory.buildLine(resource, points);
+	                })();
+	                break;
+	            case 'MultiLineString':
+	                (function() {
+	                    var lines = [];
+	                    for (var i = 0; i < coords.length; i++) {
+	                        var points = factory.getProjectedPoints(coords[i]);
+	                        var line = factory.buildLine(resource, points);
+	                        lines.push(line);
+	                    }
+	                    result = getFeature(lines);
+	                })();
+	                break;
+	            case 'Polygon':
+	                (function() {
+	                    result = drawPolygon(coords);
+	                })();
+	                break;
+	            case 'MultiPolygon':
+	                (function() {
+	                    var polygons = [];
+	                    for (var i = 0; i < coords.length; i++) {
+	                        var polygon = drawPolygon(coords[i]);
+	                        if (polygon) {
+	                            polygons.push(polygon);
+	                        }
+	                    }
+	                    result = getFeature(polygons);
+	                })();
+	                break;
+	            case 'GeometryCollection':
+	                (function() {
+	                    var list = [];
+	                    var geoms = geometry.geometries;
+	                    for (var i = 0, len = geoms.length; i < len; i++) {
+	                        var layer = buildGeometryLayer(geoms[i]);
+	                        if (layer) {
+	                            list.push(layer);
+	                        }
+	                    }
+	                    result = getFeature(list);
+	                })();
+	                break;
+	        }
+	        return result;
+	    }
+	};
+
+
+/***/ },
+/* 12 */
 /***/ function(module, exports, __webpack_require__) {
 
 	/**
@@ -2222,7 +2440,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	module.exports = CanvasTools;
 
 /***/ },
-/* 12 */
+/* 13 */
 /***/ function(module, exports, __webpack_require__) {
 
 	// A very simple (< 100 LOC) promise A implementation without external dependencies.
@@ -2326,7 +2544,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 
 /***/ },
-/* 13 */
+/* 14 */
 /***/ function(module, exports, __webpack_require__) {
 
 	var __WEBPACK_AMD_DEFINE_RESULT__;/*

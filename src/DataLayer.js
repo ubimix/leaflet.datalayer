@@ -88,23 +88,74 @@ var DataLayer = L.GridLayer.extend({
         initContainer.apply(this, arguments);
         var pane = this._getDataLayersPane();
         pane.appendChild(this._container);
-        // if (this.options.zIndex) {
-        // this._container.style.zIndex = this.options.zIndex;
-        // }
+        this._updateZIndex();
     },
 
     /** Returns a pane containing all instances of this class. */
     _getDataLayersPane : function() {
         return this.getPane('overlayPane');
+        // return this.getPane('tilePane');
+    },
+
+    /** Checks and updates the z-index of this layer. */
+    _updateZIndex : function() {
+        if (this.options.zIndex) {
+            this._container.style.zIndex = this.options.zIndex;
+        }
     },
 
     // --------------------------------------------------------------------
     // Event management
 
-    /** Activates/deactivates event management for this layer. */
-    _initEvents : function(onoff) {
+    /**
+     * Returns a singlethon instance (one per map) of an object responsible for
+     * dispatching map events between individual data layers.
+     */
+    _getSinglethonEventDispatcher : function(map, create) {
+        if (map.__dataLayerHandlers) {
+            return map.__dataLayerHandlers;
+        }
         var events = 'click mouseover mouseout mousemove';
-        this._map[onoff](events, this._mouseHandler, this);
+        var handlers = [];
+        function on(handler, context) {
+            if (!handlers.length) {
+                map.on(events, dispatch);
+            }
+            var slot = {
+                handler : handler,
+                context : context
+            };
+            handlers.push(slot);
+        }
+        function off(handler, context) {
+            for (var i = handlers.length - 1; i >= 0; i--) {
+                var slot = handlers[i];
+                if (slot.handler === handler && slot.context === context) {
+                    handlers.splice(i, 1);
+                }
+            }
+            if (!handlers.length) {
+                map.off(events, dispatch);
+                delete map.__dataLayerHandlers;
+            }
+        }
+        function dispatch(ev) {
+            for (var i = handlers.length - 1; i >= 0; i--) {
+                var slot = handlers[i];
+                slot.handler.call(slot.context, ev);
+            }
+        }
+        map.__dataLayerHandlers = {
+            on : on,
+            off : off
+        };
+        return map.__dataLayerHandlers;
+    },
+
+    /** Activates/deactivates event management for this layer. */
+    _initEvents : function(type) {
+        var dispatcher = this._getSinglethonEventDispatcher(this._map);
+        dispatcher[type](this._mouseHandler, this);
     },
 
     _mouseHandler : function(e) {
