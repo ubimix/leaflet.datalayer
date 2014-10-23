@@ -88,17 +88,18 @@ var DataLayer = L.GridLayer.extend({
         initContainer.apply(this, arguments);
         var pane = this._getDataLayersPane();
         pane.appendChild(this._container);
-        this._updateZIndex();
+        this._setZIndex();
     },
 
     /** Returns a pane containing all instances of this class. */
     _getDataLayersPane : function() {
-        return this.getPane('overlayPane');
+        return this.getPane('markerPane');
+        // return this.getPane('overlayPane');
         // return this.getPane('tilePane');
     },
 
     /** Checks and updates the z-index of this layer. */
-    _updateZIndex : function() {
+    _setZIndex : function() {
         if (this.options.zIndex) {
             this._container.style.zIndex = this.options.zIndex;
         }
