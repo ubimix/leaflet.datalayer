@@ -20,8 +20,10 @@ module.exports = function(grunt) {
                 path : distDir,
                 filename : pkg.appname + '.js',
                 library : pkg.appname,
-                libraryTarget : 'umd'
+                libraryTarget : 'umd',
             },
+            cache : true,
+            watch: true,
             externals : [ {
                 'leaflet' : 'leaflet'
             } ],

@@ -9,5 +9,6 @@ DataLayer.GeometryRenderer = require('./src/GeometryRenderer');
 DataLayer.CanvasContext = require('./src/CanvasContext');
 DataLayer.P = DataLayer.Promise = L.Promise = require('./src/P');
 DataLayer.DataUtils = require('./src/DataUtils');
+DataLayer.GeoJsonRenderer = require('./src/GeoJsonRenderer');
 
 module.exports = L.DataLayer = DataLayer;

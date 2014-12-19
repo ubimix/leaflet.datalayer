@@ -3,6 +3,42 @@ var SimpleDataProvider = require('./SimpleDataProvider');
 var MarkersRenderer = require('./MarkersRenderer');
 var P = require('./P');
 
+var CanvasLayer;
+if (L.TileLayer && L.TileLayer.Canvas) {
+    CanvasLayer = L.TileLayer.Canvas.extend({
+        getPane : function(name) {
+            return this._map._panes[name];
+        },
+        onAdd : function(map) {
+            this._map = map;
+            L.TileLayer.Canvas.prototype.onAdd.apply(this, arguments);
+            this._onAdd(map);
+        },
+        onRemove : function(map) {
+            this._onRemove(map);
+            L.TileLayer.Canvas.prototype.onRemove.apply(this, arguments);
+            delete this._map;
+        },
+    });
+} else {
+    CanvasLayer = L.GridLayer.extend({
+        onAdd : function(map) {
+            this._map = map;
+            this._onAdd(map);
+        },
+        onRemove : function(map) {
+            this._onRemove(map);
+            delete this._map;
+        },
+    });
+}
+L.Util.extend(CanvasLayer.prototype, {
+    _onAdd : function(map) {
+    },
+    _onRemove : function(map) {
+    },
+});
+
 /**
  * This layer draws data on canvas tiles. This class uses the following
  * parameters from the constructor: 1) 'dataProvider' is a IDataProvider
@@ -11,7 +47,7 @@ var P = require('./P');
  * responsible for data visualization on canvas tiles; by default a
  * MarkersRenderer instance is used
  */
-var DataLayer = L.TileLayer.Canvas.extend({
+var DataLayer = CanvasLayer.extend({
 
     /** Default options of this class. */
     options : {
@@ -40,7 +76,10 @@ var DataLayer = L.TileLayer.Canvas.extend({
         options.fillOpacity = options.opacity;
         delete options.opacity;
         var url = null;
-        L.TileLayer.Canvas.prototype.initialize.apply(this, url, options);
+        var parentInit = CanvasLayer.prototype.initialize;
+        if (parentInit) {
+            parentInit.apply(this, url, options);
+        }
         L.setOptions(this, options);
         if (this.options.data) {
             this.setData(this.options.data);
@@ -48,16 +87,15 @@ var DataLayer = L.TileLayer.Canvas.extend({
     },
 
     // --------------------------------------------------------------------
-    // Leaflet.ILayer/L.TileLayer.Canvas methods
+    // CanvasLayer methods
 
     /**
      * This method is called when this layer is added to the map.
      */
-    onAdd : function(map) {
+    _onAdd : function(map) {
         this._map = map;
         var dataRenderer = this.getDataRenderer();
         dataRenderer.onAdd(this);
-        L.TileLayer.Canvas.prototype.onAdd.apply(this, arguments);
         this.on('tileunload', this._onTileUnload, this);
         this._initEvents('on');
         // this.redraw();
@@ -66,49 +104,113 @@ var DataLayer = L.TileLayer.Canvas.extend({
     /**
      * This method is called when this layer is removed from the map.
      */
-    onRemove : function(map) {
+    _onRemove : function(map) {
         this.off('tileunload', this._onTileUnload, this);
         this._initEvents('off');
         this._removeMouseCursorStyle();
-        L.TileLayer.Canvas.prototype.onRemove.apply(this, arguments);
         var dataRenderer = this.getDataRenderer();
         dataRenderer.onRemove(this);
         delete this._map;
+    },
+
+    /** Creates and returns a new tile canvas */
+    createTile : function(coords, done) {
+        console.log('????', coords, done);
+        var canvas = L.DomUtil.create('canvas', 'leaflet-tile');
+        var tileSize = this._getTileSize();
+        canvas.width = tileSize;
+        canvas.height = tileSize;
+        canvas.onselectstart = canvas.onmousemove = L.Util.falseFn;
+        this._redrawTile(canvas, coords, done);
+        return canvas;
     },
 
     /**
      * Initializes container for tiles.
      */
     _initContainer : function() {
-        var initContainer = L.TileLayer.Canvas.prototype._initContainer;
+        var initContainer = CanvasLayer.prototype._initContainer;
         initContainer.apply(this, arguments);
         var pane = this._getDataLayersPane();
         pane.appendChild(this._container);
+        this._setZIndex();
+    },
+
+    /** Returns a pane containing all instances of this class. */
+    _getDataLayersPane : function() {
+        return this.getPane('markerPane');
+        // return this.getPane('overlayPane');
+        // return this.getPane('tilePane');
+    },
+
+    /** Checks and updates the z-index of this layer. */
+    _setZIndex : function() {
         if (this.options.zIndex) {
             this._container.style.zIndex = this.options.zIndex;
         }
     },
 
-    /** Returns a pane containing all instances of this class. */
-    _getDataLayersPane : function() {
-        return this._map._panes.markerPane;
-    },
-
     // --------------------------------------------------------------------
     // Event management
 
-    /** Activates/deactivates event management for this layer. */
-    _initEvents : function(onoff) {
+    /**
+     * Returns a singlethon instance (one per map) of an object responsible for
+     * dispatching map events between individual data layers.
+     */
+    _getSinglethonEventDispatcher : function(map, create) {
+        if (map.__dataLayerHandlers) {
+            return map.__dataLayerHandlers;
+        }
         var events = 'click mouseover mouseout mousemove';
-        this._map[onoff](events, this._mouseHandler, this);
+        var handlers = [];
+        function on(handler, context) {
+            if (!handlers.length) {
+                map.on(events, dispatch);
+            }
+            var slot = {
+                handler : handler,
+                context : context
+            };
+            handlers.push(slot);
+        }
+        function off(handler, context) {
+            for (var i = handlers.length - 1; i >= 0; i--) {
+                var slot = handlers[i];
+                if (slot.handler === handler && slot.context === context) {
+                    handlers.splice(i, 1);
+                }
+            }
+            if (!handlers.length) {
+                map.off(events, dispatch);
+                delete map.__dataLayerHandlers;
+            }
+        }
+        function dispatch(ev) {
+            for (var i = handlers.length - 1; i >= 0; i--) {
+                var slot = handlers[i];
+                slot.handler.call(slot.context, ev);
+            }
+        }
+        map.__dataLayerHandlers = {
+            on : on,
+            off : off
+        };
+        return map.__dataLayerHandlers;
+    },
+
+    /** Activates/deactivates event management for this layer. */
+    _initEvents : function(type) {
+        var dispatcher = this._getSinglethonEventDispatcher(this._map);
+        dispatcher[type](this._mouseHandler, this);
     },
 
     _mouseHandler : function(e) {
         if (e.type === 'click') {
-            this._click(e);
+            return this._click(e);
         } else {
-            this._move(e);
+            return this._move(e);
         }
+        return true;
     },
 
     /** Map click handler */
@@ -239,14 +341,14 @@ var DataLayer = L.TileLayer.Canvas.extend({
      * This method is used to draw on canvas tiles. It is invoked by the parent
      * L.TileLayer.Canvas class.
      */
-    _redrawTile : function(canvas) {
+    _redrawTile : function(canvas, tilePoint, done) {
         var that = this;
         if (!that._map)
             return;
-
-        var tilePoint = canvas._tilePoint;
         var dataProvider = that.getDataProvider();
         var dataRenderer = that.getDataRenderer();
+        console.log('I AM HERE _redrawTile', arguments);
+        
         return P.then(function() {
             var bufferSize = dataRenderer.getBufferZoneSize();
             var bbox = that._getTileBoundingBox(tilePoint, bufferSize);
@@ -267,22 +369,10 @@ var DataLayer = L.TileLayer.Canvas.extend({
             });
         }).then(function(context) {
             canvas._index = context;
-            that.tileDrawn(canvas);
+            done(null, canvas);
         }, function(err) {
-            try {
-                that._handleRenderError(canvas, tilePoint, err);
-            } finally {
-                that.tileDrawn(canvas);
-            }
+            done(err, canvas);
         });
-    },
-
-    /**
-     * Reports a rendering error
-     */
-    _handleRenderError : function(canvas, tilePoint, err) {
-        // TODO: visualize the error on the canvas
-        console.log('ERROR', err);
     },
 
     /**
@@ -308,7 +398,9 @@ var DataLayer = L.TileLayer.Canvas.extend({
      */
     _getTileBoundingBox : function(tilePoint, bufferSize) {
         var that = this;
+        tilePoint = L.point(0, 0);
         var tileSize = that._getTileSize();
+        console.log('I AM HERE', tilePoint, bufferSize);
         var nwPoint = tilePoint.multiplyBy(tileSize);
         var sePoint = nwPoint.add(new L.Point(tileSize, tileSize));
         bufferSize = L.point(bufferSize || [ 0, 0 ]);

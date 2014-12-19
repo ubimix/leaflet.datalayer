@@ -1,7 +1,3 @@
-/*!
- * leaflet.datalayer v0.0.5 | License: MIT 
- * 
- */
 (function webpackUniversalModuleDefinition(root, factory) {
 	if(typeof exports === 'object' && typeof module === 'object')
 		module.exports = factory(require("leaflet"));
@@ -69,6 +65,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	DataLayer.CanvasContext = __webpack_require__(8);
 	DataLayer.P = DataLayer.Promise = L.Promise = __webpack_require__(9);
 	DataLayer.DataUtils = __webpack_require__(10);
+	DataLayer.GeoJsonRenderer = __webpack_require__(11);
 
 	module.exports = L.DataLayer = DataLayer;
 
@@ -88,6 +85,42 @@ return /******/ (function(modules) { // webpackBootstrap
 	var MarkersRenderer = __webpack_require__(6);
 	var P = __webpack_require__(9);
 
+	var CanvasLayer;
+	if (L.TileLayer && L.TileLayer.Canvas) {
+	    CanvasLayer = L.TileLayer.Canvas.extend({
+	        getPane : function(name) {
+	            return this._map._panes[name];
+	        },
+	        onAdd : function(map) {
+	            this._map = map;
+	            L.TileLayer.Canvas.prototype.onAdd.apply(this, arguments);
+	            this._onAdd(map);
+	        },
+	        onRemove : function(map) {
+	            this._onRemove(map);
+	            L.TileLayer.Canvas.prototype.onRemove.apply(this, arguments);
+	            delete this._map;
+	        },
+	    });
+	} else {
+	    CanvasLayer = L.GridLayer.extend({
+	        onAdd : function(map) {
+	            this._map = map;
+	            this._onAdd(map);
+	        },
+	        onRemove : function(map) {
+	            this._onRemove(map);
+	            delete this._map;
+	        },
+	    });
+	}
+	L.Util.extend(CanvasLayer.prototype, {
+	    _onAdd : function(map) {
+	    },
+	    _onRemove : function(map) {
+	    },
+	});
+
 	/**
 	 * This layer draws data on canvas tiles. This class uses the following
 	 * parameters from the constructor: 1) 'dataProvider' is a IDataProvider
@@ -96,7 +129,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	 * responsible for data visualization on canvas tiles; by default a
 	 * MarkersRenderer instance is used
 	 */
-	var DataLayer = L.TileLayer.Canvas.extend({
+	var DataLayer = CanvasLayer.extend({
 
 	    /** Default options of this class. */
 	    options : {
@@ -125,7 +158,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	        options.fillOpacity = options.opacity;
 	        delete options.opacity;
 	        var url = null;
-	        L.TileLayer.Canvas.prototype.initialize.apply(this, url, options);
+	        var parentInit = CanvasLayer.prototype.initialize;
+	        if (parentInit) {
+	            parentInit.apply(this, url, options);
+	        }
 	        L.setOptions(this, options);
 	        if (this.options.data) {
 	            this.setData(this.options.data);
@@ -133,16 +169,15 @@ return /******/ (function(modules) { // webpackBootstrap
 	    },
 
 	    // --------------------------------------------------------------------
-	    // Leaflet.ILayer/L.TileLayer.Canvas methods
+	    // CanvasLayer methods
 
 	    /**
 	     * This method is called when this layer is added to the map.
 	     */
-	    onAdd : function(map) {
+	    _onAdd : function(map) {
 	        this._map = map;
 	        var dataRenderer = this.getDataRenderer();
 	        dataRenderer.onAdd(this);
-	        L.TileLayer.Canvas.prototype.onAdd.apply(this, arguments);
 	        this.on('tileunload', this._onTileUnload, this);
 	        this._initEvents('on');
 	        // this.redraw();
@@ -151,49 +186,113 @@ return /******/ (function(modules) { // webpackBootstrap
 	    /**
 	     * This method is called when this layer is removed from the map.
 	     */
-	    onRemove : function(map) {
+	    _onRemove : function(map) {
 	        this.off('tileunload', this._onTileUnload, this);
 	        this._initEvents('off');
 	        this._removeMouseCursorStyle();
-	        L.TileLayer.Canvas.prototype.onRemove.apply(this, arguments);
 	        var dataRenderer = this.getDataRenderer();
 	        dataRenderer.onRemove(this);
 	        delete this._map;
+	    },
+
+	    /** Creates and returns a new tile canvas */
+	    createTile : function(coords, done) {
+	        console.log('????', coords, done);
+	        var canvas = L.DomUtil.create('canvas', 'leaflet-tile');
+	        var tileSize = this._getTileSize();
+	        canvas.width = tileSize;
+	        canvas.height = tileSize;
+	        canvas.onselectstart = canvas.onmousemove = L.Util.falseFn;
+	        this._redrawTile(canvas, coords, done);
+	        return canvas;
 	    },
 
 	    /**
 	     * Initializes container for tiles.
 	     */
 	    _initContainer : function() {
-	        var initContainer = L.TileLayer.Canvas.prototype._initContainer;
+	        var initContainer = CanvasLayer.prototype._initContainer;
 	        initContainer.apply(this, arguments);
 	        var pane = this._getDataLayersPane();
 	        pane.appendChild(this._container);
+	        this._setZIndex();
+	    },
+
+	    /** Returns a pane containing all instances of this class. */
+	    _getDataLayersPane : function() {
+	        return this.getPane('markerPane');
+	        // return this.getPane('overlayPane');
+	        // return this.getPane('tilePane');
+	    },
+
+	    /** Checks and updates the z-index of this layer. */
+	    _setZIndex : function() {
 	        if (this.options.zIndex) {
 	            this._container.style.zIndex = this.options.zIndex;
 	        }
 	    },
 
-	    /** Returns a pane containing all instances of this class. */
-	    _getDataLayersPane : function() {
-	        return this._map._panes.markerPane;
-	    },
-
 	    // --------------------------------------------------------------------
 	    // Event management
 
-	    /** Activates/deactivates event management for this layer. */
-	    _initEvents : function(onoff) {
+	    /**
+	     * Returns a singlethon instance (one per map) of an object responsible for
+	     * dispatching map events between individual data layers.
+	     */
+	    _getSinglethonEventDispatcher : function(map, create) {
+	        if (map.__dataLayerHandlers) {
+	            return map.__dataLayerHandlers;
+	        }
 	        var events = 'click mouseover mouseout mousemove';
-	        this._map[onoff](events, this._mouseHandler, this);
+	        var handlers = [];
+	        function on(handler, context) {
+	            if (!handlers.length) {
+	                map.on(events, dispatch);
+	            }
+	            var slot = {
+	                handler : handler,
+	                context : context
+	            };
+	            handlers.push(slot);
+	        }
+	        function off(handler, context) {
+	            for (var i = handlers.length - 1; i >= 0; i--) {
+	                var slot = handlers[i];
+	                if (slot.handler === handler && slot.context === context) {
+	                    handlers.splice(i, 1);
+	                }
+	            }
+	            if (!handlers.length) {
+	                map.off(events, dispatch);
+	                delete map.__dataLayerHandlers;
+	            }
+	        }
+	        function dispatch(ev) {
+	            for (var i = handlers.length - 1; i >= 0; i--) {
+	                var slot = handlers[i];
+	                slot.handler.call(slot.context, ev);
+	            }
+	        }
+	        map.__dataLayerHandlers = {
+	            on : on,
+	            off : off
+	        };
+	        return map.__dataLayerHandlers;
+	    },
+
+	    /** Activates/deactivates event management for this layer. */
+	    _initEvents : function(type) {
+	        var dispatcher = this._getSinglethonEventDispatcher(this._map);
+	        dispatcher[type](this._mouseHandler, this);
 	    },
 
 	    _mouseHandler : function(e) {
 	        if (e.type === 'click') {
-	            this._click(e);
+	            return this._click(e);
 	        } else {
-	            this._move(e);
+	            return this._move(e);
 	        }
+	        return true;
 	    },
 
 	    /** Map click handler */
@@ -324,14 +423,14 @@ return /******/ (function(modules) { // webpackBootstrap
 	     * This method is used to draw on canvas tiles. It is invoked by the parent
 	     * L.TileLayer.Canvas class.
 	     */
-	    _redrawTile : function(canvas) {
+	    _redrawTile : function(canvas, tilePoint, done) {
 	        var that = this;
 	        if (!that._map)
 	            return;
-
-	        var tilePoint = canvas._tilePoint;
 	        var dataProvider = that.getDataProvider();
 	        var dataRenderer = that.getDataRenderer();
+	        console.log('I AM HERE _redrawTile', arguments);
+	        
 	        return P.then(function() {
 	            var bufferSize = dataRenderer.getBufferZoneSize();
 	            var bbox = that._getTileBoundingBox(tilePoint, bufferSize);
@@ -352,22 +451,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	            });
 	        }).then(function(context) {
 	            canvas._index = context;
-	            that.tileDrawn(canvas);
+	            done(null, canvas);
 	        }, function(err) {
-	            try {
-	                that._handleRenderError(canvas, tilePoint, err);
-	            } finally {
-	                that.tileDrawn(canvas);
-	            }
+	            done(err, canvas);
 	        });
-	    },
-
-	    /**
-	     * Reports a rendering error
-	     */
-	    _handleRenderError : function(canvas, tilePoint, err) {
-	        // TODO: visualize the error on the canvas
-	        console.log('ERROR', err);
 	    },
 
 	    /**
@@ -393,7 +480,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	     */
 	    _getTileBoundingBox : function(tilePoint, bufferSize) {
 	        var that = this;
+	        tilePoint = L.point(0, 0);
 	        var tileSize = that._getTileSize();
+	        console.log('I AM HERE', tilePoint, bufferSize);
 	        var nwPoint = tilePoint.multiplyBy(tileSize);
 	        var sePoint = nwPoint.add(new L.Point(tileSize, tileSize));
 	        bufferSize = L.point(bufferSize || [ 0, 0 ]);
@@ -655,7 +744,7 @@ return /******/ (function(modules) { // webpackBootstrap
 /* 5 */
 /***/ function(module, exports, __webpack_require__) {
 
-	var rbush = __webpack_require__(13);
+	var rbush = __webpack_require__(14);
 	var IDataProvider = __webpack_require__(3);
 	var DataUtils = __webpack_require__(10);
 	var P = __webpack_require__(9);
@@ -1237,7 +1326,7 @@ return /******/ (function(modules) { // webpackBootstrap
 /* 8 */
 /***/ function(module, exports, __webpack_require__) {
 
-	var CanvasTools = __webpack_require__(11);
+	var CanvasTools = __webpack_require__(12);
 
 	/**
 	 * This utility class allows to associate data with non-transparent pixels of
@@ -1459,8 +1548,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	    return P.resolve(value);
 	}
 	P.defer = P.deferred = function() {
-	    var Deferred = __webpack_require__(12);
-	    Deferred.SYNC = true;
+	    var Deferred = __webpack_require__(13);
+	//    Deferred.SYNC = true;
 	    P.defer = Deferred;
 	    return P.defer();
 	};
@@ -1609,6 +1698,172 @@ return /******/ (function(modules) { // webpackBootstrap
 /* 11 */
 /***/ function(module, exports, __webpack_require__) {
 
+	module.exports = GeoJsonRenderer;
+
+	function GeoJsonRenderer() {
+	}
+
+	GeoJsonRenderer.prototype = {
+
+	    build : function(resource) {
+	        return GeoJsonRenderer.build(this, resource);
+	    },
+
+	    /**
+	     * Creates and returns a group corresponding to the specified resource and
+	     * containing all given features.
+	     */
+	    buildGroup : function(resource, features) {
+	        return;
+	    },
+
+	    /**
+	     * Creates and returns a marker object corresponding to the specified
+	     * resource with the given coordinates.
+	     */
+	    buildMarker : function(resource, coords) {
+	        return;
+	    },
+
+	    /** Draws a line corresponding to the specified sequence of points */
+	    buildLine : function(resource, coords) {
+	        return;
+	    },
+
+	    /**
+	     * Creates and returns a polygon with holes corresponding to the specified
+	     * resource.
+	     */
+	    buildPolygon : function(resource, coords, holes) {
+	        return;
+	    },
+
+	    /** Returns points corresponding to the given coordinates. */
+	    getProjectedPoints : function(coords) {
+	        return coords;
+	    },
+
+	};
+
+	/**
+	 * Builds a layer object corresponding to the specified resource.
+	 * 
+	 * @param factory
+	 *            creating new layers
+	 * @param resource
+	 *            the resource to render
+	 */
+	GeoJsonRenderer.build = function(factory, resource) {
+	    var that = this;
+	    var geometry = resource.geometry;
+	    if (!geometry) return;
+	    return buildGeometryLayer(geometry);
+
+	    /** Returns a valid layer corresponding to the specified features. */
+	    function getFeature(list) {
+	        if (list.length === 0) {
+	            return;
+	        } else if (list.length == 1) {
+	            return list[0];
+	        } else {
+	            return factory.buildGroup(resource, list);
+	        }
+	    }
+
+	    /** Draws a polygon corresponding to the specified coordinates. */
+	    function drawPolygon(coords) {
+	        var polygons = factory.getProjectedPoints(coords[0]);
+	        var holes = [];
+	        for (var i = 1; i < coords.length; i++) {
+	            var hole = factory.getProjectedPoints(coords[i]);
+	            if (hole && hole.length) {
+	                holes.push(hole);
+	            }
+	        }
+	        return factory.buildPolygon(resource, polygons, holes);
+	    }
+
+	    function buildGeometryLayer(geometry) {
+	        var result;
+	        var coords = geometry.coordinates;
+	        switch (geometry.type) {
+	            case 'Point':
+	                (function() {
+	                    var points = factory.getProjectedPoints([ coords ]);
+	                    if (points && points.length) {
+	                        result = factory.buildMarker(resource, points[0]);
+	                    }
+	                })();
+	                break;
+	            case 'MultiPoint':
+	                (function() {
+	                    var points = factory.getProjectedPoints(coords);
+	                    var markers = [];
+	                    for (var i = 0; i < points.length; i++) {
+	                        var point = points[i];
+	                        var marker = factory.buildMarker(resource, point);
+	                        markers.push(marker);
+	                    }
+	                    result = getFeature(markers);
+	                })();
+	                break;
+	            case 'LineString':
+	                (function() {
+	                    var points = factory.getProjectedPoints(coords);
+	                    result = factory.buildLine(resource, points);
+	                })();
+	                break;
+	            case 'MultiLineString':
+	                (function() {
+	                    var lines = [];
+	                    for (var i = 0; i < coords.length; i++) {
+	                        var points = factory.getProjectedPoints(coords[i]);
+	                        var line = factory.buildLine(resource, points);
+	                        lines.push(line);
+	                    }
+	                    result = getFeature(lines);
+	                })();
+	                break;
+	            case 'Polygon':
+	                (function() {
+	                    result = drawPolygon(coords);
+	                })();
+	                break;
+	            case 'MultiPolygon':
+	                (function() {
+	                    var polygons = [];
+	                    for (var i = 0; i < coords.length; i++) {
+	                        var polygon = drawPolygon(coords[i]);
+	                        if (polygon) {
+	                            polygons.push(polygon);
+	                        }
+	                    }
+	                    result = getFeature(polygons);
+	                })();
+	                break;
+	            case 'GeometryCollection':
+	                (function() {
+	                    var list = [];
+	                    var geoms = geometry.geometries;
+	                    for (var i = 0, len = geoms.length; i < len; i++) {
+	                        var layer = buildGeometryLayer(geoms[i]);
+	                        if (layer) {
+	                            list.push(layer);
+	                        }
+	                    }
+	                    result = getFeature(list);
+	                })();
+	                break;
+	        }
+	        return result;
+	    }
+	};
+
+
+/***/ },
+/* 12 */
+/***/ function(module, exports, __webpack_require__) {
+
 	/**
 	 * This class provides a set of utility methods simplifying data visualization
 	 * on canvas.
@@ -1667,8 +1922,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	        if (!strokeStyles)
 	            return;
 	        // Create new canvas where the polygon should be drawn
-	        var canvas = this.newCanvas();
-	        var g = canvas.getContext('2d');
+	        var g = this._getTmpCanvasContext();
+	        var canvas = g.canvas;
 	        // Simplify point sequence
 	        points = this._simplify(points);
 	        // Trace the line
@@ -1690,8 +1945,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	        if (!fillStyles && !strokeStyles)
 	            return;
 	        // Create new canvas where the polygon should be drawn
-	        var canvas = this.newCanvas();
-	        var g = canvas.getContext('2d');
+	        var g = this._getTmpCanvasContext();
+	        var canvas = g.canvas;
 
 	        var i;
 
@@ -1739,6 +1994,27 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	    // -----------------------------------------------------------------------
 	    // Private methods
+
+	    /**
+	     * Returns a temporary canvas context used to draw individual features on
+	     * it.
+	     */
+	    _getTmpCanvasContext : function() {
+	        var canvas = this._getTmpCanvas();
+	        var g = canvas._context;
+	        if (!g){
+	            g = canvas._context = canvas.getContext('2d');
+	            g.canvas = canvas;
+	        }
+	        return g;
+	    },
+
+	    /**
+	     * Returns a temporary canvas used to draw individual features on it.
+	     */
+	    _getTmpCanvas : function() {
+	        return this.newCanvas();
+	    },
 
 	    /**
 	     * Returns bounding polygon for the underlying canvas. The returned polygon
@@ -2210,7 +2486,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	module.exports = CanvasTools;
 
 /***/ },
-/* 12 */
+/* 13 */
 /***/ function(module, exports, __webpack_require__) {
 
 	// A very simple (< 100 LOC) promise A implementation without external dependencies.
@@ -2314,7 +2590,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 
 /***/ },
-/* 13 */
+/* 14 */
 /***/ function(module, exports, __webpack_require__) {
 
 	var __WEBPACK_AMD_DEFINE_RESULT__;/*

@@ -6,7 +6,7 @@ function P(value) {
 }
 P.defer = P.deferred = function() {
     var Deferred = require('./Deferred');
-    Deferred.SYNC = true;
+//    Deferred.SYNC = true;
     P.defer = Deferred;
     return P.defer();
 };

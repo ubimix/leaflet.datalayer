@@ -56,8 +56,8 @@ CanvasTools.extend(CanvasTools.prototype, {
         if (!strokeStyles)
             return;
         // Create new canvas where the polygon should be drawn
-        var canvas = this.newCanvas();
-        var g = canvas.getContext('2d');
+        var g = this._getTmpCanvasContext();
+        var canvas = g.canvas;
         // Simplify point sequence
         points = this._simplify(points);
         // Trace the line
@@ -79,8 +79,8 @@ CanvasTools.extend(CanvasTools.prototype, {
         if (!fillStyles && !strokeStyles)
             return;
         // Create new canvas where the polygon should be drawn
-        var canvas = this.newCanvas();
-        var g = canvas.getContext('2d');
+        var g = this._getTmpCanvasContext();
+        var canvas = g.canvas;
 
         var i;
 
@@ -128,6 +128,27 @@ CanvasTools.extend(CanvasTools.prototype, {
 
     // -----------------------------------------------------------------------
     // Private methods
+
+    /**
+     * Returns a temporary canvas context used to draw individual features on
+     * it.
+     */
+    _getTmpCanvasContext : function() {
+        var canvas = this._getTmpCanvas();
+        var g = canvas._context;
+        if (!g){
+            g = canvas._context = canvas.getContext('2d');
+            g.canvas = canvas;
+        }
+        return g;
+    },
+
+    /**
+     * Returns a temporary canvas used to draw individual features on it.
+     */
+    _getTmpCanvas : function() {
+        return this.newCanvas();
+    },
 
     /**
      * Returns bounding polygon for the underlying canvas. The returned polygon
