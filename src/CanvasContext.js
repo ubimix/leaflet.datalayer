@@ -158,13 +158,18 @@ CanvasContext.extend(CanvasContext.prototype, {
 
     /** Creates and returns an image mask. */
     _buildImageMask : function(image) {
-        var canvas = this.newCanvas();
-        var g = canvas.getContext('2d');
         var maskWidth = this._getMaskX(image.width);
         var maskHeight = this._getMaskY(image.height);
-        canvas.width = maskWidth;
-        canvas.height = maskHeight;
-        g.drawImage(image, 0, 0, maskWidth, maskHeight);
+        var g;
+        if (!this._isCanvas(image)) {
+            g = image.getContext('2d');
+        } else {
+            var canvas = this.newCanvas();
+            g = canvas.getContext('2d');
+            canvas.width = maskWidth;
+            canvas.height = maskHeight;
+            g.drawImage(image, 0, 0, maskWidth, maskHeight);
+        }
         var data = g.getImageData(0, 0, maskWidth, maskHeight).data;
         var mask = new Array(maskWidth * maskHeight);
         for (var y = 0; y < maskHeight; y++) {
@@ -204,7 +209,15 @@ CanvasContext.extend(CanvasContext.prototype, {
     _getMaskY : function(y) {
         var resolutionY = this.options.resolutionY;
         return Math.round(y / resolutionY);
+    },
+    
+    /**
+     * Returns <code>true</code> if the specified image is a canvas.
+     */
+    _isCanvas : function(img){
+        return img.tagName === 'CANVAS';
     }
+
 });
 
 module.exports = CanvasContext;
