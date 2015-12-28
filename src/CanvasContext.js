@@ -31,7 +31,7 @@ CanvasContext.extend(CanvasContext.prototype, {
         this.options.resolutionX || resolution;
         this._maskWidth = this._getMaskX(this._canvas.width);
         this._maskHeight = this._getMaskY(this._canvas.height);
-        this._dataIndex = {};
+        this._resetData();
     },
 
     /** Returns an array with width and height of the canvas. */
@@ -58,11 +58,45 @@ CanvasContext.extend(CanvasContext.prototype, {
      * Returns data associated with the specified position on the canvas.
      */
     getData : function(x, y) {
+        var array = this.getAllData(x, y);
+        return array && array.length ? array[0] : undefined; 
+    },
+    
+    /**
+     * Returns all data objects associated with the specified position on the canvas.
+     */
+    getAllData : function(x, y) {
         var maskX = this._getMaskX(x);
         var maskY = this._getMaskY(y);
         var pos = maskY * this._maskWidth + maskX;
-        var result = this._dataIndex[pos];
-        return result;
+        return this._dataIndex[pos];
+    },    
+
+    /**
+     * Sets data in the specified position on the canvas.
+     */
+    setData : function(x, y, data) {
+        var maskX = this._getMaskX(x);
+        var maskY = this._getMaskY(y);
+        return this._setData(maskX, maskY, data);
+    },
+
+    /**
+     * Adds data to the specified canvas position.
+     * 
+     * @param maskX
+     * @param maskY
+     * @param data
+     * @returns
+     */
+    _setData : function(maskX, maskY, data) {
+        var pos = maskY * this._maskWidth + maskX;
+        var array = this._dataIndex[pos] = this._dataIndex[pos] || [];
+        array.unshift(data);
+    },
+
+    _resetData : function() {
+        this._dataIndex = {};
     },
 
     /**
@@ -71,7 +105,7 @@ CanvasContext.extend(CanvasContext.prototype, {
     reset : function() {
         var g = this._canvasContext;
         g.clearRect(0, 0, this._canvas.width, this._canvas.height);
-        this._dataIndex = {};
+        this._resetData();
     },
 
     // ------------------------------------------------------------------
@@ -96,7 +130,7 @@ CanvasContext.extend(CanvasContext.prototype, {
             var y = maskShiftY + Math.floor(i / imageMaskWidth);
             if (x >= 0 && x < this._maskWidth && //
             y >= 0 && y < this._maskHeight) {
-                this._dataIndex[y * this._maskWidth + x] = data;
+                this._setData(x, y, data);
                 result = true;
             }
         }
@@ -161,7 +195,7 @@ CanvasContext.extend(CanvasContext.prototype, {
         var maskWidth = this._getMaskX(image.width);
         var maskHeight = this._getMaskY(image.height);
         var g;
-        if (!this._isCanvas(image)) {
+        if (!this._isCanvas(image)) {
             g = image.getContext('2d');
         } else {
             var canvas = this.newCanvas();
@@ -210,11 +244,11 @@ CanvasContext.extend(CanvasContext.prototype, {
         var resolutionY = this.options.resolutionY;
         return Math.round(y / resolutionY);
     },
-    
+
     /**
      * Returns <code>true</code> if the specified image is a canvas.
      */
-    _isCanvas : function(img){
+    _isCanvas : function(img) {
         return img.tagName === 'CANVAS';
     }
 

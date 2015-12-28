@@ -34,30 +34,39 @@ function main(id) {
     var museumsLayer = newMuseumsLayer(DATA.features);
     // Bind an event listener for this layer
     museumsLayer.on('click', function(ev) {
-        var latlng;
-        var content;
-        var props = ev.data.properties;
-        if (ev.data.geometry.type == 'Point') {
-            var coords = ev.data.geometry.coordinates;
-            latlng = L.latLng(coords[1], coords[0]);
-            content = '' + //
-            '<div>' + //
-            '<h3>' + props.name + '</h3>' + //
-            '<div><em>' + props.category + '</em></div>' + //
-            '<p>' + props.description + '</p>' + //
-            '</div>';
-
-        } else {
-            latlng = ev.latlng;
-            var name = props.nom || props.pnr_origin;
-            content = '<div><h3>' + name + '</h3></div>';
+        var counter = 0;
+        function renderMuseum(open, data){
+            var props = data.properties;
+            var script = '';
+            var content = '' + //
+                '<div>' + //
+                '<h3>' + props.name + '</h3>' + //
+                '<div><em>' + props.category + '</em></div>' + //
+                '<p>' + props.description + '</p>' + //
+                '</div>';
+            return content;
         }
-        var dataRenderer = museumsLayer.getDataRenderer()
+        
+        var coords = ev.data.geometry.coordinates;
+        var latlng = L.latLng(coords[1], coords[0]);
+        
+        var open = ev.array.length > 1;
+        var contentArray = ev.array.map(renderMuseum.bind(null, open));
+        var content;
+        if (contentArray.length > 1) {
+            content = '<ol><li>' + contentArray.join('</li>\n<li>') + '</li></ol>';
+        } else {
+            content = contentArray.join('');
+        }
+        var dataRenderer = museumsLayer.getDataRenderer();
         var offset = dataRenderer.getPopupOffset();
-        L.popup({
+        var popup = L.popup({
             offset : offset,
             maxHeight : 250
-        }).setLatLng(latlng).setContent(content).openOn(map);
+        });
+        popup.setLatLng(latlng);
+        popup.setContent(content);
+        popup.openOn(map);
     });
     map.addLayer(museumsLayer);
 
@@ -80,6 +89,11 @@ function newMuseumsLayer(data) {
             thresholdSize : 8
         },
 
+        getBufferZoneSize: function(){
+            var radius = this._getRadius();
+            return [radius, radius * 2];
+        },
+        
         /**
          * Returns a type for the specified resource. This value is used to
          * associate specific icons for each resource type.
@@ -195,8 +209,15 @@ function newMuseumsLayer(data) {
             var fullZoom = 15;
             var fullRadius = 32;
             var minRadius = 4;
-            var radius = fullRadius * Math.pow(2, zoom - fullZoom);
-            radius = Math.max(minRadius, Math.min(fullRadius, radius));
+            var scale = Math.pow(2, zoom - fullZoom);
+            console.log('scale: ', scale);
+            if (scale > 1) {
+//                scale = Math.log(scale) / Math.log(2);
+            }
+            var radius = fullRadius * scale;
+//            radius = Math.min(radius, 2 * fullRadius);
+//            radius = Math.max(minRadius, Math.min(fullRadius, radius));
+            radius = Math.max(minRadius, radius);
             return radius;
         },
         /** A custom method returning popup offset for the current zoom level. */

@@ -333,16 +333,18 @@ var DataLayer = L.TileLayer.Canvas.extend({
         var tilePoint = point.divideBy(tileSize).floor();
         var key = tilePoint.x + ':' + tilePoint.y;
         var canvas = this._tiles[key];
-        var data;
+        var array;
         if (canvas) {
             var index = canvas._index;
             if (index) {
                 var canvasX = point.x % tileSize;
                 var canvasY = point.y % tileSize;
-                data = index.getData(canvasX, canvasY);
+                var array = index.getAllData(canvasX, canvasY);
             }
         }
-        e.data = data;
+        array = array || [];
+        e.array = array;
+        e.data = array.length ? array[0] : undefined;
         return e;
     },
 
