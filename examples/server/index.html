@@ -7,7 +7,7 @@
 	content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"></meta>
 
 <!-- CSS styles -->
-<link href="../libs/leaflet/dist/leaflet.css" rel="stylesheet"></link>
+<link href="../../node_modules/leaflet/dist/leaflet.css" rel="stylesheet"></link>
 <link href="./main.css" rel="stylesheet"></link>
 
 </head>
@@ -19,7 +19,7 @@
     * "data-zoom" - initial zoom level
     * "data-max-zoom" - maximal zoom level
     * "data-tiles-url" - URL mask for tiles
-    * "data-attribution" - attribution information 
+    * "data-attribution" - attribution information
     -->
 	<div id="map" data-center="[2.33314, 48.86167]" data-zoom="12"
 		data-max-zoom="18"
@@ -27,16 +27,14 @@
 		data-attribution="Map tiles by Stamen Design, under CC BY 3.0 | Map data &copy; OpenStreetMap contributors, CC-BY-SA"></div>
 
 	<!-- Scripts -->
-	<script src="../libs/leaflet/dist/leaflet-src.js"
+	<script src="../../node_modules/leaflet/dist/leaflet-src.js"
 		type="text/javascript"></script>
 	<script type="text/javascript">
         window.leaflet = L;
     </script>
-	<script src="../dist/index.js" type="text/javascript"></script>
+	<script src="../../dist/index.js" type="text/javascript"></script>
     <script src="./data.js"></script>
 	<script src="./main.js"></script>
 
 </body>
 </html>
-
-

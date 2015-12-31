@@ -1,11 +1,13 @@
-var L = require('leaflet');
 var DataRenderer = require('./DataRenderer');
-var P = require('./P');
+var Utils = require('./Utils');
 
 /**
  * A common interface visualizing data on canvas.
  */
-var GeometryRenderer = DataRenderer.extend({
+function GeometryRenderer() {
+    DataRenderer.apply(this, arguments);
+}
+Utils.extend(GeometryRenderer.prototype, DataRenderer.prototype, {
 
     /** Initializes fields of this object. */
     initialize : function() {
@@ -33,8 +35,8 @@ var GeometryRenderer = DataRenderer.extend({
      * Prepares the specified context. This method could be overload to
      * asynchronously load resources required to render data.
      */
-    _prepareContext : function(context) {
-        return P.resolve(context);
+    _prepareContext : function(context, done) {
+        return done(null, context);
     },
 
     /**
@@ -217,8 +219,8 @@ var GeometryRenderer = DataRenderer.extend({
     /**
      * Draws an icon and returns information about it as an object with the
      * following fields: a) 'image' - an Image or a Canvas instance b) 'anchor'
-     * a L.Point instance defining the position on the icon corresponding to the
-     * resource coordinates
+     * an array defining the position on the icon corresponding to the resource
+     * coordinates
      */
     _newResourceMarker : function(resource, context) {
         var radius = this._getRadius();

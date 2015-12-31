@@ -1,12 +1,15 @@
-var L = require('leaflet');
 var DataRenderer = require('./DataRenderer');
 var DataUtils = require('./DataUtils');
 var P = require('./P');
+var Utils = require('./Utils');
 
 /**
  * A common interface visualizing data on canvas.
  */
-var MarkersRenderer = DataRenderer.extend({
+function MarkersRenderer() {
+    DataRenderer.apply(this, arguments);
+}
+Utils.extend(MarkersRenderer.prototype, DataRenderer.prototype, {
 
     /** Initializes fields of this object. */
     initialize : function() {
@@ -27,10 +30,6 @@ var MarkersRenderer = DataRenderer.extend({
      * this image on the tile. If this method returns nothing (or a
      * <code>null</code> value) then nothing is drawn for the specified
      * resource.
-     * 
-     * @return an object containing the following fields: a) 'image' - an Image
-     *         or Canvas instance with the drawn result b) 'anchor' a L.Point
-     *         object defining position on the returned image on the tile;
      */
     _drawFeature : function(resource, context) {
         var geometry = resource.geometry;
@@ -63,9 +62,10 @@ var MarkersRenderer = DataRenderer.extend({
             }
         }
         if (marker && marker.image) {
-            var markerAnchor = L.point(marker.anchor);
-            var pos = L.point(anchor).subtract(markerAnchor);
-            context.drawImage(marker.image, [ pos.x, pos.y ], {
+            var markerAnchor = marker.anchor || [ 0, 0 ];
+            var pos = [ anchor[0] - markerAnchor[0],
+                    anchor[1] - markerAnchor[1] ];
+            context.drawImage(marker.image, pos, {
                 data : resource
             });
         }
@@ -104,8 +104,8 @@ var MarkersRenderer = DataRenderer.extend({
     /**
      * Draws an icon and returns information about it as an object with the
      * following fields: a) 'image' - an Image or a Canvas instance b) 'anchor'
-     * a L.Point instance defining the position on the icon corresponding to the
-     * resource coordinates
+     * an array defining the position on the icon corresponding to the resource
+     * coordinates; format: [x, y];
      */
     _newResourceMarker : function(resource, context) {
         var radius = this._getRadius();

@@ -1,16 +1,18 @@
-var L = require('leaflet');
-var P = require('./P');
+var Utils = require('./Utils');
 var CanvasContext = require('./CanvasContext');
 var DataUtils = require('./DataUtils');
 
 /**
  * Instances of this class used to visualizing data on canvas.
  */
-var DataRenderer = L.Class.extend({
+function DataRenderer(){
+    this.initialize.apply(this, arguments);
+}
+Utils.extend(DataRenderer.prototype, {
 
     /** Constructor of this class; initializes internal fields. */
     initialize : function(options) {
-        L.setOptions(this, options);
+        this.options = options || {};
     },
 
     // -----------------------------------------------------------------------
@@ -29,21 +31,20 @@ var DataRenderer = L.Class.extend({
      * @param options.zoom
      *            the current map zoom level
      */
-    renderData : function(options) {
+    renderData : function(options, done) {
         var that = this;
         var context = that._newCanvasContext(options);
-        return P.then(function() {
-            return that._prepareContext(context);
-        }).then(function() {
+        that._prepareContext(context, function(err){
+            if (err) return done(err);
             var data = options.data || [];
             var len = data.length;
             for (var i = 0; i < len; i++) {
                 var d = data[i];
                 that._drawFeature(d, context);
             }
-        }).then(function() {
-            return context;
+            return done(null, context);
         });
+        return context;
     },
 
     // -----------------------------------------------------------------------
@@ -62,8 +63,8 @@ var DataRenderer = L.Class.extend({
      * Prepares the specified context. This method could be overload to
      * asynchronously load resources required to render data.
      */
-    _prepareContext : function(context) {
-        return P.resolve();
+    _prepareContext : function(context, done) {
+        done(null, context);
     },
 
     /**
@@ -83,10 +84,15 @@ var DataRenderer = L.Class.extend({
 
     /** Creates and returns a canvas index (a CanvasContext instance). */
     _newCanvasContext : function(options) {
-        options = DataUtils.extend({}, options, {
-            maskIndex : this._getMaskIndex()
-        });
-        var context = new CanvasContext(options);
+        var contextOptions = {};
+        options = options || {};
+        for (var key in options) {
+            if (options.hasOwnProperty(key)) {
+                contextOptions[key] = options[key];
+            }
+        }
+        contextOptions.maskIndex = this._getMaskIndex();
+        var context = new CanvasContext(contextOptions);
         return context;
     },
 
@@ -96,25 +102,6 @@ var DataRenderer = L.Class.extend({
      */
     _getMaskIndex : function() {
         return this.options.maskIndex;
-    },
-
-    // --------------------------------------------------------------------
-    // Lifecycle methods used to initialize internal fields
-
-    /**
-     * This method is called when the parent layer is added to the map.
-     */
-    onAdd : function(layer) {
-        this._layer = layer;
-        this._map = layer._map;
-    },
-
-    /**
-     * This method is called when the parent layer is removed from the map.
-     */
-    onRemove : function(layer) {
-        delete this._layer;
-        delete this._map;
     },
 
     // --------------------------------------------------------------------
@@ -156,9 +143,15 @@ var DataRenderer = L.Class.extend({
         var origin = bbox.getNorthWest();
         return [ origin.lng, origin.lat ];
     },
+    
     _projectPoint : function(coords) {
-        var map = this._map;
-        return map.project([ coords[1], coords[0] ]);
+        var result;
+        if (this.options.project) {
+            result = this.options.project(coords);
+        } else {
+            result = [ coords[1], coords[0] ];
+        }
+        return result;
     },
 
     /**

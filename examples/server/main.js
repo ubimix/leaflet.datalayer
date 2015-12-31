@@ -80,11 +80,16 @@ function main(id) {
 }
 
 function newMuseumsLayer(data) {
+//    var Parent = L.DataLayer.GeometryRenderer;
+    var Parent = function(){};
     /**
      * Custom data renderer. This class draws small circles for low zoom levels
      * and colored markers for higher zooms.
      */
-    var MuseumRenderer = L.DataLayer.GeometryRenderer.extend({
+    function MuseumRenderer(){
+        Parent.apply(this, arguments);
+    }
+    L.Util.extend(MuseumRenderer.prototype, Parent.prototype, {
         statics : {
             thresholdSize : 8
         },
@@ -210,7 +215,6 @@ function newMuseumsLayer(data) {
             var fullRadius = 32;
             var minRadius = 4;
             var scale = Math.pow(2, zoom - fullZoom);
-            console.log('scale: ', scale);
             if (scale > 1) {
 //                scale = Math.log(scale) / Math.log(2);
             }
@@ -231,15 +235,16 @@ function newMuseumsLayer(data) {
             }
         }
     });
-    var dataRenderer = new MuseumRenderer();
-    // Optional instantiation of a data provider.
-    var dataProvider = new L.DataLayer.SimpleDataProvider({});
-    dataProvider.setData(data);
-    // Data layer instantiation
-    var dataLayer = new L.DataLayer({
-        dataRenderer : dataRenderer,
-        dataProvider : dataProvider,
-        zIndex : 2
-    });
+//    var dataRenderer = new MuseumRenderer();
+//    // Optional instantiation of a data provider.
+//    var dataProvider = new L.DataLayer.SimpleDataProvider({});
+//    dataProvider.setData(data);
+//    // Data layer instantiation
+//    var dataLayer = new L.DataLayer({
+//        dataRenderer : dataRenderer,
+//        dataProvider : dataProvider,
+//        zIndex : 2
+//    });
+    var dataLayer = new L.DataLayer({});
     return dataLayer;
 }
