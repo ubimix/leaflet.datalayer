@@ -19,6 +19,13 @@ CanvasContext.prototype = {
     // -----------------------------------------------------------------------
 
     /**
+     * Returns an array [width, height] for the underlying canvas.
+     */
+    getCanvasSize : function() {
+        return [ this._canvas.width, this._canvas.height ];
+    },
+
+    /**
      * Copies an image to the main canvas.
      * 
      * @param image
@@ -31,7 +38,7 @@ CanvasContext.prototype = {
      */
     drawImage : function(image, position, options) {
         this._drawOnCanvasContext(options, function(g) {
-            g.drawImage(image, position[0], position[1], options.data);
+            g.drawImage(image, position[0], position[1]);
             return true;
         });
     },
@@ -61,6 +68,7 @@ CanvasContext.prototype = {
         // Get styles
         var fillStyles = this._getFillStyles(options);
         var strokeStyles = this._getStrokeStyles(options);
+        console.log('>>>', strokeStyles);
         // Return if there is no styles defined for these
         // polygons
         if (!fillStyles && !strokeStyles)

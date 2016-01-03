@@ -34,12 +34,17 @@ GridIndex.prototype = {
 
     /**
      * Sets data in the specified position on the canvas.
+     * 
+     * @param x
+     * @param y
+     * @param options.data
+     *            a data object to set
      */
-    addData : function(x, y, data, replace) {
+    addData : function(x, y, options) {
         var maskX = this._getMaskX(x);
         var maskY = this._getMaskY(y);
         var key = this._getIndexKey(maskX, maskY);
-        return this._addDataToIndex(key, data, replace);
+        return this._addDataToIndex(key, options);
     },
 
     reset : function() {
@@ -70,9 +75,12 @@ GridIndex.prototype = {
      * @param replace
      * @returns
      */
-    _addDataToIndex : function(key, data, replace) {
+    _addDataToIndex : function(key, options) {
+        var data = options.data;
+        if (!data)
+            return;
         var array = this._dataIndex[key];
-        if (!array || replace) {
+        if (!array || options.replace) {
             array = this._dataIndex[key] = [];
         }
         array.unshift(data);

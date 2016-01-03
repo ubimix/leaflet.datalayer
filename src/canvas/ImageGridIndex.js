@@ -10,11 +10,12 @@ Utils.extend(ImageGridIndex.prototype, GridIndex.prototype, {
      * Adds all pixels occupied by the specified image to a data mask associated
      * with canvas.
      */
-    indexImage : function(image, x, y, data, replace) {
+    indexImage : function(image, x, y, options) {
         var result = false;
+        var data = options.data;
         if (!data)
             return result;
-        var mask = this._getImageMask(image);
+        var mask = this._getImageMask(image, options);
         var imageMaskWidth = this._getMaskX(image.width);
         var maskShiftX = this._getMaskX(x);
         var maskShiftY = this._getMaskY(y);
@@ -24,7 +25,7 @@ Utils.extend(ImageGridIndex.prototype, GridIndex.prototype, {
             var maskX = maskShiftX + (i % imageMaskWidth);
             var maskY = maskShiftY + Math.floor(i / imageMaskWidth);
             var key = this._getIndexKey(maskX, maskY);
-            this._addDataToIndex(key, data, !!replace);
+            this._addDataToIndex(key, options);
             result = true;
         }
         return result;
@@ -36,30 +37,11 @@ Utils.extend(ImageGridIndex.prototype, GridIndex.prototype, {
      * Returns a unique key of the specified image. If this method returns
      * <code>null</code> then the image mask is not stored in the internal
      * mask cache. To allow to store the image mask in cache the image should be
-     * 'stampted' with a new identifier using the setImageKey method..
+     * 'stampted' with a new identifier using the ImageGridIndex.stampImage
+     * method..
      */
-    getImageKey : function(image, set) {
-        var id = image['image-id'];
-        if (!id && set) {
-            id = this.setImageKey(image);
-        }
-        return id;
-    },
-
-    /**
-     * Sets a new image key used to associate an image mask with this image.
-     */
-    setImageKey : function(image, imageKey) {
-        var key = image['image-id'];
-        if (!key) {
-            if (!imageKey) {
-                var id = IndexingCanvasContext._imageIdCounter || 0;
-                IndexingCanvasContext._imageIdCounter = id + 1;
-                imageKey = 'key-' + id;
-            }
-            key = image['image-id'] = imageKey;
-        }
-        return key;
+    stampImage : function(image) {
+        return ImageGridIndex.stampImage(image);
     },
 
     // -------------------------------------------------------------------------
@@ -67,15 +49,15 @@ Utils.extend(ImageGridIndex.prototype, GridIndex.prototype, {
     /**
      * Returns a mask corresponding to the specified image.
      */
-    _getImageMask : function(image) {
-        var maskIndex = this._getImageMaskIndex();
-        var imageKey = this.getImageKey(image, !!maskIndex);
+    _getImageMask : function(image, options) {
+        var imageKey = this.stampImage(image);
+        var maskIndex = this._getImageMaskIndex(image, options);
         if (!maskIndex || !imageKey) {
-            return this._buildImageMask(image);
+            return this._buildImageMask(image, options);
         }
         var mask = maskIndex[imageKey];
         if (!mask) {
-            mask = this._buildImageMask(image);
+            mask = this._buildImageMask(image, options);
             maskIndex[imageKey] = mask;
         }
         return mask;
@@ -86,8 +68,14 @@ Utils.extend(ImageGridIndex.prototype, GridIndex.prototype, {
      * canvas. This method could be overloaded to implement a global index of
      * image masks.
      */
-    _getImageMaskIndex : function() {
-        return this.options.maskIndex;
+    _getImageMaskIndex : function(image, options) {
+        var index = options.imageMaskIndex || this.options.imageMaskIndex;
+        if (!index)
+            return;
+        if (typeof index === 'function') {
+            index = index(image, options);
+        }
+        return index;
     },
 
     /** Creates and returns an image mask. */
@@ -138,7 +126,7 @@ Utils.extend(ImageGridIndex.prototype, GridIndex.prototype, {
         var canvas;
         if (this.options.newCanvas) {
             canvas = this.options.newCanvas(width, height);
-        } else {
+        } else {
             canvas = document.createElement('canvas');
             canvas.width = width;
             canvas.height = height;
@@ -148,6 +136,13 @@ Utils.extend(ImageGridIndex.prototype, GridIndex.prototype, {
 
 });
 
-
+ImageGridIndex.stampImage = function(image) {
+    var key = image['image-id'];
+    if (!key) {
+        var that = ImageGridIndex;
+        that._imageIdCounter = (that._imageIdCounter || 0) + 1;
+        key = image['image-id'] = 'i' + that._imageIdCounter;
+    }
+    return key;
+}
 module.exports = ImageGridIndex;
-

@@ -9,6 +9,7 @@ var ImageGridIndex = require('./ImageGridIndex');
 function CanvasIndexingContext() {
     CanvasContext.apply(this, arguments);
 }
+CanvasIndexingContext.stampImage = ImageGridIndex.stampImage;
 Utils.extend(CanvasIndexingContext, CanvasContext);
 Utils.extend(CanvasIndexingContext.prototype, CanvasContext.prototype, {
 
@@ -42,10 +43,7 @@ Utils.extend(CanvasIndexingContext.prototype, CanvasContext.prototype, {
         // Draw the image on the canvas
         this._context.drawImage(image, x, y);
         // Associate non-transparent pixels of the image with data
-        var data = options && options.data;
-        if (data) {
-            this.index.indexImage(image, x, y, data);
-        }
+        this.index.indexImage(image, x, y, options);
     },
 
     _drawOnCanvasContext : function(options, f) {
@@ -107,5 +105,4 @@ Utils.extend(CanvasIndexingContext.prototype, CanvasContext.prototype, {
     },
 
 });
-
 module.exports = CanvasIndexingContext;
