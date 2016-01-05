@@ -11,27 +11,14 @@ var GeometryRenderer = require('./geo/GeometryRenderer');
 var ParentLayer = L.GridLayer;
 var DataLayer = ParentLayer.extend({
 
+    _getTileByCoordinates : function() {
+
+    },
+
     onAdd : function(map) {
         ParentLayer.prototype.onAdd.apply(this, arguments);
-        this._map.on('mousemove', function(ev) {
-            var p = this._map.project(ev.latlng).floor();
-            var tileSize = this.getTileSize();
-            var coords = p.unscaleBy(tileSize).floor();
-            coords.z = this._map.getZoom();
-            var key = this._tileCoordsToKey(coords);
-            var slot = this._tiles[key];
-            if (!slot)
-                return;
-            var tile = slot.el;
-            var tilePos = this._getTilePos(coords);
-            var x = p.x % tileSize.x;
-            var y = p.y % tileSize.y;
-            var data = tile.context.getData(x, y);
-            if (data) {
-                var counter = this._counter = (this._counter || 0) + 1;
-                console.log(' ' + counter + ')', data);
-            }
-        }, this);
+        this._map.on('mousemove', this._onMouseMove, this);
+        this._map.on('click', this._onClick, this);
 
         this.on('tileunload', function(ev) {
             var el = ev.tile;
@@ -47,6 +34,8 @@ var DataLayer = ParentLayer.extend({
     },
 
     onRemove : function() {
+        this._map.off('click', this._onClick, this);
+        this._map.off('mousemove', this._onMouseMove, this);
         ParentLayer.prototype.onRemove.apply(this, arguments);
     },
 
@@ -65,12 +54,13 @@ var DataLayer = ParentLayer.extend({
                 bounds.getNorth() ];
         var origin = [ bbox[0], bbox[3] ];
 
-        var padX = 0.2;
-        var padY = 0.2;
-        var deltaX = Math.abs(bbox[0] - bbox[2]) * padX;
-        var deltaY = Math.abs(bbox[1] - bbox[3]) * padY;
-        bbox = [ bbox[0] - deltaX, bbox[1] - deltaY, bbox[2] + deltaX,
-                bbox[3] + deltaY ];
+        var pad = this._getTilePad();
+        var deltaLeft = Math.abs(bbox[0] - bbox[2]) * pad[0];
+        var deltaRight = Math.abs(bbox[0] - bbox[2]) * pad[2];
+        var deltaTop = Math.abs(bbox[1] - bbox[3]) * pad[3];
+        var deltaBottom = Math.abs(bbox[1] - bbox[3]) * pad[1];
+        bbox = [ bbox[0] - deltaLeft, bbox[1] - deltaBottom,
+                bbox[2] + deltaRight, bbox[3] + deltaTop ];
 
         var size = Math.min(tileSize.x, tileSize.y);
         var scale = GeometryRenderer.calculateScale(tilePoint.z, size);
@@ -128,6 +118,65 @@ var DataLayer = ParentLayer.extend({
 
         return canvas;
     },
+
+    _getTilePad : function() {
+        // left, bottom, right, top
+        // west, south, east, north
+        return [ 0.2, 0.2, 0.2, 0.2 ];
+    },
+
+    _getDataByCoordinates : function(latlng) {
+        var p = this._map.project(latlng).floor();
+        var tileSize = this.getTileSize();
+        var coords = p.unscaleBy(tileSize).floor();
+        coords.z = this._map.getZoom();
+        var key = this._tileCoordsToKey(coords);
+        var slot = this._tiles[key];
+        if (!slot)
+            return;
+        var tile = slot.el;
+        var x = p.x % tileSize.x;
+        var y = p.y % tileSize.y;
+        var data = tile.context.getAllData(x, y);
+        return data;
+    },
+
+    _onClick : function(ev) {
+        var data = this._getDataByCoordinates(ev.latlng);
+        if (!!data) {
+            ev.array = data;
+            ev.data = data[0];
+            this.fire('click', ev);
+        }
+    },
+
+    _onMouseMove : function(ev) {
+        var data = this._getDataByCoordinates(ev.latlng);
+        if (!!data) {
+            ev.array = data;
+            ev.data = data[0];
+            this.fire('mousemove', ev);
+            this._setMouseOverStyle(true);
+        } else {
+            this._setMouseOverStyle(false);
+        }
+    },
+
+    _setMouseOverStyle : function(set) {
+        set = !!set;
+        if (!!this._mouseover !== set) {
+            var delta = set ? 1 : -1;
+            this._map._mouseoverCounter = //
+            (this._map._mouseoverCounter || 0) + delta;
+            var el = this._map._container;
+            if (!!this._map._mouseoverCounter) {
+                el.style.cursor = 'pointer';
+            } else {
+                el.style.cursor = 'auto';
+            }
+        }
+        this._mouseover = set;
+    }
 
 });
 

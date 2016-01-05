@@ -68,6 +68,7 @@ Utils.extend(GeometryRenderer.prototype, {
             });
             if (options) {
                 points = that._getProjectedPoints(points);
+                options.data = resource;
                 that.context.drawLine(points, options);
             }
             // drawMarker([ 0, 0 ]);
@@ -86,6 +87,7 @@ Utils.extend(GeometryRenderer.prototype, {
                 index : index
             });
             if (options) {
+                options.data = resource;
                 that.context.drawPolygon([ polygons ], holes, options);
             }
             // drawMarker([ 0, 0 ]);
@@ -148,13 +150,13 @@ Utils.extend(GeometryRenderer.prototype, {
      * Returns an array of projected points.
      */
     _getProjectedPoints : function(coordinates) {
-        if (typeof this.options.project === 'function') {
-            this._getProjectedPoints = function(coordinates){
+        if (typeof this.options.project === 'function') {
+            this._getProjectedPoints = function(coordinates) {
                 return this.options.project(coordinates);
             }
             return this._getProjectedPoints(coordinates);
         }
-        
+
         var t = this.getTransformation();
         var s = this.getScale();
         var origin = this.getOrigin();

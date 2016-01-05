@@ -36,6 +36,7 @@ Utils.extend(CanvasIndexingContext.prototype, CanvasContext.prototype, {
      * Draws the specified image in the given position on the underlying canvas.
      */
     drawImage : function(image, position, options) {
+        console.log('*** ', image, position, options);
         if (!image || !position)
             return;
         var x = position[0];

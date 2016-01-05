@@ -50,8 +50,13 @@ function main(id) {
             return content;
         }
 
-        var coords = ev.data.geometry.coordinates;
-        var latlng = L.latLng(coords[1], coords[0]);
+        var latlng;
+        if (ev.data.geometry.type === 'Point') {
+            var coords = ev.data.geometry.coordinates;
+            latlng = L.latLng(coords[1], coords[0]);
+        } else {
+            latlng = ev.latlng;
+        }
 
         var open = ev.array.length > 1;
         var contentArray = ev.array.map(renderMuseum.bind(null, open));
@@ -62,8 +67,7 @@ function main(id) {
         } else {
             content = contentArray.join('');
         }
-        var dataRenderer = museumsLayer.getDataRenderer();
-        var offset = dataRenderer.getPopupOffset();
+        var offset = [ 8, -15 ]; // dataRenderer.getPopupOffset();
         var popup = L.popup({
             offset : offset,
             maxHeight : 250
@@ -84,172 +88,7 @@ function main(id) {
 }
 
 function newMuseumsLayer(data) {
-    // var Parent = L.DataLayer.GeometryRenderer;
-    var Parent = function() {
-    };
-    /**
-     * Custom data renderer. This class draws small circles for low zoom levels
-     * and colored markers for higher zooms.
-     */
-    function MuseumRenderer() {
-        Parent.apply(this, arguments);
-    }
-    L.Util.extend(MuseumRenderer.prototype, Parent.prototype, {
-        statics : {
-            thresholdSize : 8
-        },
 
-        getBufferZoneSize : function() {
-            var radius = this._getRadius();
-            return [ radius, radius * 2 ];
-        },
-
-        /**
-         * Returns a type for the specified resource. This value is used to
-         * associate specific icons for each resource type.
-         */
-        _getResourceType : function(resource) {
-            var props = resource.properties || {};
-            switch (props.category) {
-            case "Peinture":
-                return 'painting';
-            case "Objets d'art":
-            case "Art contemporain":
-                return 'art';
-            case "Sciences":
-                return 'science';
-            case "Archéologie":
-                return 'archeology';
-            case "Autre":
-            default:
-                return 'other';
-            }
-        },
-        /** Returns a color specific for each resource type. */
-        _getColor : function(type) {
-            switch (type) {
-            case 'painting':
-                return 'red';
-            case 'art':
-                return 'blue';
-            case 'science':
-                return 'orange';
-            case 'archeology':
-                return 'green';
-            case 'other':
-            default:
-                return 'purple';
-            }
-        },
-        /**
-         * Drawing icons. This method draws circles for small zoom levels and
-         * markers when user zooms in. It is called only once for each type of
-         * resources for each zoom level.
-         */
-        _newResourceMarker : function(resource, context) {
-            var radius = this._getRadius();
-            var lineWidth = radius < MuseumRenderer.thresholdSize ? 1 : 2;
-            var type = this._getResourceType(resource);
-            var color = this._getColor(type);
-            var stroke = 'white';
-            var canvas = document.createElement('canvas');
-            var width = radius * 2;
-            var height = radius * 2;
-            canvas.height = height;
-            canvas.width = width;
-            radius -= lineWidth;
-
-            var g = canvas.getContext('2d');
-            g.globalAlpha = 0.85;
-            if (radius < MuseumRenderer.thresholdSize) {
-                g.beginPath();
-                g.arc(width / 2, height / 2, radius, 0, 2 * Math.PI, false);
-                g.fillStyle = color;
-                g.fill();
-                g.lineWidth = lineWidth;
-                g.strokeStyle = stroke;
-                g.stroke();
-                return {
-                    image : canvas,
-                    anchor : L.point(width / 2, height / 2)
-                };
-            } else {
-                g.fillStyle = color;
-                g.strokeStyle = stroke;
-                g.lineWidth = lineWidth;
-                g.lineCap = 'round';
-                // This method is defined in the parent class.
-                var pinRadius = radius * 0.6;
-                this._drawMarker(g, lineWidth, lineWidth,
-                        width - lineWidth * 2, height - lineWidth * 2,
-                        pinRadius);
-                g.fill();
-                g.stroke();
-
-                // A hole in the middle
-                var r = pinRadius / 4;
-                var x = width / 2;
-                var y = pinRadius + lineWidth;
-                g.beginPath();
-                g.globalAlpha = 1;
-                g.globalCompositeOperation = 'destination-out';
-                g.arc(x, y, r, 0, 2 * Math.PI, false);
-                g.fill();
-
-                // A border around the hole
-                g.beginPath();
-                g.lineWidth = lineWidth / 2;
-                g.globalCompositeOperation = 'source-over';
-                g.arc(x, y, r, 0, 2 * Math.PI, false);
-                g.strokeStyle = stroke;
-                g.stroke();
-                return {
-                    image : canvas,
-                    anchor : L.point(width / 2, height - lineWidth * 2)
-                };
-            }
-        },
-        /**
-         * Overload the getRadius method to make it depending on the current
-         * zoom level.
-         */
-        _getRadius : function() {
-            var zoom = this._map.getZoom();
-            // Zoom level where the marker has its full size
-            var fullZoom = 15;
-            var fullRadius = 32;
-            var minRadius = 4;
-            var scale = Math.pow(2, zoom - fullZoom);
-            if (scale > 1) {
-                // scale = Math.log(scale) / Math.log(2);
-            }
-            var radius = fullRadius * scale;
-            // radius = Math.min(radius, 2 * fullRadius);
-            // radius = Math.max(minRadius, Math.min(fullRadius, radius));
-            radius = Math.max(minRadius, radius);
-            return radius;
-        },
-        /** A custom method returning popup offset for the current zoom level. */
-        getPopupOffset : function() {
-            var radius = this._getRadius();
-            var shift = +6;
-            if (radius < MuseumRenderer.thresholdSize) {
-                return L.point(0, -radius + shift);
-            } else {
-                return L.point(0, -radius * 2 + shift);
-            }
-        }
-    });
-    // var dataRenderer = new MuseumRenderer();
-    // // Optional instantiation of a data provider.
-    // var dataProvider = new L.DataLayer.SimpleDataProvider({});
-    // dataProvider.setData(data);
-    // // Data layer instantiation
-    // var dataLayer = new L.DataLayer({
-    // dataRenderer : dataRenderer,
-    // dataProvider : dataProvider,
-    // zIndex : 2
-    // });
     var image = document.querySelector('img.icon');
     image.parentNode.removeChild(image);
     var style = new L.DataLayer.GeometryRendererStyle({
@@ -279,5 +118,8 @@ function newMuseumsLayer(data) {
         style : style,
         provider : provider
     });
+    dataLayer.on('mousemove', function(ev) {
+        console.log('mousemove', ev.data);
+    })
     return dataLayer;
 }
