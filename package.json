@@ -52,6 +52,7 @@
     "leaflet": "git+https://github.com/Leaflet/Leaflet.git#v1.0.0-beta.2",
     "rbush": "^1.4.2",
     "simplify-js": "^1.2.1",
+    "turf-extent": "^1.0.4",
     "turf-simplify": "^1.0.3"
   }
 }

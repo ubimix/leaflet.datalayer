@@ -1,85 +1,131 @@
 var L = require('leaflet');
 var Utils = require('./utils');
 
+var CanvasContext = require('./canvas/CanvasContext');
+var CanvasIndexingContext = require('./canvas/CanvasIndexingContext');
+var GeometryRenderer = require('./geo/GeometryRenderer');
+
 /**
  * This layer draws data on canvas tiles.
  */
 var ParentLayer = L.GridLayer;
 var DataLayer = ParentLayer.extend({
 
-    /** Default options of this class. */
-    options : {
+    onAdd : function(map) {
+        ParentLayer.prototype.onAdd.apply(this, arguments);
+        this._map.on('mousemove', function(ev) {
+            var p = this._map.project(ev.latlng).floor();
+            var tileSize = this.getTileSize();
+            var coords = p.unscaleBy(tileSize).floor();
+            coords.z = this._map.getZoom();
+            var key = this._tileCoordsToKey(coords);
+            var slot = this._tiles[key];
+            if (!slot)
+                return;
+            var tile = slot.el;
+            var tilePos = this._getTilePos(coords);
+            var x = p.x % tileSize.x;
+            var y = p.y % tileSize.y;
+            var data = tile.context.getData(x, y);
+            if (data) {
+                var counter = this._counter = (this._counter || 0) + 1;
+                console.log(' ' + counter + ')', data);
+            }
+        }, this);
 
-        // Default size of a minimal clickable zone is 4x4 screen
-        // pixels.
-        resolution : 4,
-
-        // Show pointer cursor for zones associated with data
-        pointerCursor : true,
-
+        this.on('tileunload', function(ev) {
+            var el = ev.tile;
+            el.style.display = 'none';
+            if (el.parentNode) {
+                el.parentNode.removeChild(el);
+            }
+        }, this);
+        this.on('tileload', function(ev) {
+            var el = ev.tile;
+            el.style.display = 'block';
+        }, this);
     },
 
-    _drawSandboxImage : function(canvas, tilePoint) {
-        var ctx = canvas.getContext("2d");
-        ctx.strokeStyle = "#FF0000";
-        ctx.beginPath();
-        var d = 0;
-        ctx.arc(canvas.width / 2 - d, canvas.height / 2 - d, canvas.width / 2,
-                0, 2 * Math.PI);
-        ctx.stroke();
-
-        var textHeight = 15;
-        ctx.font = textHeight + "px Arial";
-        ctx.fillStyle = 'red';
-        var text = [ tilePoint.x, tilePoint.y, tilePoint.z ].join(':');
-        var textWidth = ctx.measureText(text).width;
-        var textX = (canvas.width - textWidth) / 2;
-        var textY = (canvas.height) / 2;
-        ctx.fillText(text, textX, textY);
+    onRemove : function() {
+        ParentLayer.prototype.onRemove.apply(this, arguments);
     },
 
     createTile : function(tilePoint, done) {
-        var canvas = document.createElement('canvas');
-        var size = this.getTileSize();
-        canvas.width = size.x;
-        canvas.height = size.y;
-        this._drawSandboxImage(canvas, tilePoint);
-        // * get the tile bounding box
-        // * expand the bounding box
-        // * load all data for this bbox
-        // * iterate over all loaded entities and draw them
-        // - get the geometry type of the entity
-        // - points - draw a marker
-        // - lines - draw lines
-        // - poly lines - iterates over lines and draw them
-        // - polygon - draw lines, fill the area, get centroid and draw
-        // marker
-        // - multipolygon - iterate over polygons and draws them
-        // - collection - iterate over features and draws them
-        // * for each feature - translate coordinates geo -> pixels
-        // * for lines, polygons: simplify lines
-        // * to get polygon and line styles - call an external config
-        // - getStrokeStyle(resource, index) where index is a geometry
-        // position for multi- geometries
-        // - getFillStyle(resource, index)
-        // - getMarkerStyle(resource, index)
-        // *
+        function newCanvas(w, h) {
+            var canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            return canvas;
+        }
+        var tileSize = this.getTileSize();
+        var canvas = newCanvas(tileSize.x, tileSize.y);
 
-        // * use the code from the GeometryRenderer to visualize data
-        // GeometryRenderer translate geometry coordinates to pixels on
-        // canvas
-        // - "canvas" / "context" fields to change canvas parameters
-        // -
-        // - contains method drawLine, drawPolygon, drawMarker methods
-        // - GeometryXxx translates geographic coordinates to canvas
-        // coordinates
-        // - GeometryXxx loads styles for each resource from
-        // RendererConfig
-        // -
+        var bounds = this._tileCoordsToBounds(tilePoint);
+        var bbox = [ bounds.getWest(), bounds.getSouth(), bounds.getEast(),
+                bounds.getNorth() ];
+        var origin = [ bbox[0], bbox[3] ];
 
-        // this._drawSandboxImage(canvas, tilePoint);
-        setTimeout(done, 0);
-        // done(null, canvas);
+        var padX = 0.2;
+        var padY = 0.2;
+        var deltaX = Math.abs(bbox[0] - bbox[2]) * padX;
+        var deltaY = Math.abs(bbox[1] - bbox[3]) * padY;
+        bbox = [ bbox[0] - deltaX, bbox[1] - deltaY, bbox[2] + deltaX,
+                bbox[3] + deltaY ];
+
+        var size = Math.min(tileSize.x, tileSize.y);
+        var scale = GeometryRenderer.calculateScale(tilePoint.z, size);
+
+        var maskIndex = this.maskIndex = this.maskIndex || {};
+        var resolution = 4;
+        var ContextType = CanvasIndexingContext;
+        // var ContextType = CanvasContext;
+        var context = new ContextType({
+            canvas : canvas,
+            newCanvas : newCanvas,
+            resolution : resolution,
+            imageMaskIndex : function(image, options) {
+                return maskIndex;
+            }
+        });
+        var map = this._map;
+        var renderer = new GeometryRenderer({
+            context : context,
+            tileSize : tileSize,
+            scale : scale,
+            origin : origin,
+            bbox : bbox,
+            project : function(coordinates) {
+                function project(point) {
+                    var p = map.project(L.latLng(point[1], point[0]),
+                            tilePoint.z);
+                    return [ p.x, p.y ];
+                }
+                var origin = renderer.getOrigin();
+                var o = project(origin);
+                return coordinates.map(function(point) {
+                    var r = project(point);
+                    var delta = [ Math.round(r[0] - o[0]),
+                            Math.round(r[1] - o[1]) ];
+                    return delta;
+                });
+            }
+        });
+
+        canvas.context = context;
+        canvas.renderer = renderer;
+
+        var style = this.options.style;
+        this.options.provider.loadData({
+            bbox : bbox
+        }, function(err, data) {
+            for (var i = 0; i < data.length; i++) {
+                renderer.drawFeature(data[i], style);
+            }
+            setTimeout(function() {
+                done(null, canvas);
+            }, 1);
+        }.bind(this));
+
         return canvas;
     },
 

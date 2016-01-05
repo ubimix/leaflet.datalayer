@@ -1,6 +1,8 @@
 /** Demo by Ubimix (http://www.ubimix.com). */
 main('map');
 
+// var data = window.data;
+
 function main(id) {
     var mapContainer = document.getElementById(id);
     function getData(key) {
@@ -32,29 +34,31 @@ function main(id) {
     // Load data and transform them into markers with basic interactivity
     // DATA object is defined in the './data.js' script.
     var museumsLayer = newMuseumsLayer(DATA.features);
+
     // Bind an event listener for this layer
     museumsLayer.on('click', function(ev) {
         var counter = 0;
-        function renderMuseum(open, data){
+        function renderMuseum(open, data) {
             var props = data.properties;
             var script = '';
             var content = '' + //
-                '<div>' + //
-                '<h3>' + props.name + '</h3>' + //
-                '<div><em>' + props.category + '</em></div>' + //
-                '<p>' + props.description + '</p>' + //
-                '</div>';
+            '<div>' + //
+            '<h3>' + props.name + '</h3>' + //
+            '<div><em>' + props.category + '</em></div>' + //
+            '<p>' + props.description + '</p>' + //
+            '</div>';
             return content;
         }
-        
+
         var coords = ev.data.geometry.coordinates;
         var latlng = L.latLng(coords[1], coords[0]);
-        
+
         var open = ev.array.length > 1;
         var contentArray = ev.array.map(renderMuseum.bind(null, open));
         var content;
         if (contentArray.length > 1) {
-            content = '<ol><li>' + contentArray.join('</li>\n<li>') + '</li></ol>';
+            content = '<ol><li>' + contentArray.join('</li>\n<li>')
+                    + '</li></ol>';
         } else {
             content = contentArray.join('');
         }
@@ -80,13 +84,14 @@ function main(id) {
 }
 
 function newMuseumsLayer(data) {
-//    var Parent = L.DataLayer.GeometryRenderer;
-    var Parent = function(){};
+    // var Parent = L.DataLayer.GeometryRenderer;
+    var Parent = function() {
+    };
     /**
      * Custom data renderer. This class draws small circles for low zoom levels
      * and colored markers for higher zooms.
      */
-    function MuseumRenderer(){
+    function MuseumRenderer() {
         Parent.apply(this, arguments);
     }
     L.Util.extend(MuseumRenderer.prototype, Parent.prototype, {
@@ -94,11 +99,11 @@ function newMuseumsLayer(data) {
             thresholdSize : 8
         },
 
-        getBufferZoneSize: function(){
+        getBufferZoneSize : function() {
             var radius = this._getRadius();
-            return [radius, radius * 2];
+            return [ radius, radius * 2 ];
         },
-        
+
         /**
          * Returns a type for the specified resource. This value is used to
          * associate specific icons for each resource type.
@@ -216,11 +221,11 @@ function newMuseumsLayer(data) {
             var minRadius = 4;
             var scale = Math.pow(2, zoom - fullZoom);
             if (scale > 1) {
-//                scale = Math.log(scale) / Math.log(2);
+                // scale = Math.log(scale) / Math.log(2);
             }
             var radius = fullRadius * scale;
-//            radius = Math.min(radius, 2 * fullRadius);
-//            radius = Math.max(minRadius, Math.min(fullRadius, radius));
+            // radius = Math.min(radius, 2 * fullRadius);
+            // radius = Math.max(minRadius, Math.min(fullRadius, radius));
             radius = Math.max(minRadius, radius);
             return radius;
         },
@@ -235,16 +240,44 @@ function newMuseumsLayer(data) {
             }
         }
     });
-//    var dataRenderer = new MuseumRenderer();
-//    // Optional instantiation of a data provider.
-//    var dataProvider = new L.DataLayer.SimpleDataProvider({});
-//    dataProvider.setData(data);
-//    // Data layer instantiation
-//    var dataLayer = new L.DataLayer({
-//        dataRenderer : dataRenderer,
-//        dataProvider : dataProvider,
-//        zIndex : 2
-//    });
-    var dataLayer = new L.DataLayer({});
+    // var dataRenderer = new MuseumRenderer();
+    // // Optional instantiation of a data provider.
+    // var dataProvider = new L.DataLayer.SimpleDataProvider({});
+    // dataProvider.setData(data);
+    // // Data layer instantiation
+    // var dataLayer = new L.DataLayer({
+    // dataRenderer : dataRenderer,
+    // dataProvider : dataProvider,
+    // zIndex : 2
+    // });
+    var image = document.querySelector('img.icon');
+    image.parentNode.removeChild(image);
+    var style = new L.DataLayer.GeometryRendererStyle({
+        lineColor : 'red',
+        line : {
+            lineOpacity : 0.9,
+            lineWidth : 3
+        },
+        polygon : {
+            fillOpacity : 0.5,
+            fillColor : 'blue',
+            lineOpacity : 0.9,
+            lineColor : 'red',
+            lineWidth : 3
+        },
+        marker : function(resource, options) {
+            return {
+                image : image,
+                anchor : [ image.width / 2, image.height ]
+            };
+        }
+    });
+    var provider = new L.DataLayer.DataProvider({
+        data : data
+    });
+    var dataLayer = new L.DataLayer({
+        style : style,
+        provider : provider
+    });
     return dataLayer;
 }

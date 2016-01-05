@@ -68,9 +68,7 @@ CanvasContext.prototype = {
         // Get styles
         var fillStyles = this._getFillStyles(options);
         var strokeStyles = this._getStrokeStyles(options);
-        console.log('>>>', strokeStyles);
-        // Return if there is no styles defined for these
-        // polygons
+        // Return if there is no styles defined for these polygons
         if (!fillStyles && !strokeStyles)
             return;
         // Create new canvas where the polygon should be drawn

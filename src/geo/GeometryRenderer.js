@@ -1,55 +1,5 @@
 var Utils = require('../utils');
 
-function RenderStyle(options) {
-    this.initialize(options);
-}
-Utils.extend(RenderStyle.prototype, {
-
-    initialize : function(options) {
-        this.options = options || {};
-    },
-
-    /**
-     * Returns an object containing a marker image, image anchor point. If there
-     * is no image returned then the marker is not shown.
-     * 
-     * @param resource
-     *            the resource to draw
-     * @param options.index
-     *            index of the coordinates array; used for MultiXxx geometry
-     *            types (MultiPolygon, MultiLine etc); if the index is not
-     *            defined then this is request for a marker for the whole
-     *            resource
-     * @return object containing the following fields: 1) 'image' the image to
-     *         draw as a marker 2) 'anchor' is an array with the X and Y
-     *         coordinates of the anchor point of the marker (position on the
-     *         image corresponding to the coordinates)
-     */
-    getMarkerStyle : function(resource, options) {
-        return {
-            image : undefined,
-            anchor : [ 0, 0 ]
-        };
-    },
-
-    getLineStyle : function(resource, options) {
-        var style = this.options.line;
-        if (typeof style === 'function') {
-            style = style.call(this, resource, options);
-        }
-        return style;
-    },
-
-    getPolygonStyle : function(resource, options) {
-        var style = this.options.polygon;
-        if (typeof style === 'function') {
-            style = style.call(this, resource, options);
-        }
-        return style;
-    },
-
-});
-
 /**
  * A common interface visualizing data on canvas.
  */
@@ -90,7 +40,7 @@ Utils.extend(GeometryRenderer.prototype, {
             var marker = style.getMarkerStyle(resource, {
                 index : index,
                 point : point,
-                index : i
+                resource : resource
             });
             if (!marker || !marker.image)
                 return;
@@ -198,14 +148,21 @@ Utils.extend(GeometryRenderer.prototype, {
      * Returns an array of projected points.
      */
     _getProjectedPoints : function(coordinates) {
+        if (typeof this.options.project === 'function') {
+            this._getProjectedPoints = function(coordinates){
+                return this.options.project(coordinates);
+            }
+            return this._getProjectedPoints(coordinates);
+        }
+        
         var t = this.getTransformation();
         var s = this.getScale();
         var origin = this.getOrigin();
-        var o = t(origin[0], origin[1], s);
+        var o = t.direct(origin[0], origin[1], s);
         var result = [];
         for (var i = 0; i < coordinates.length; i++) {
             var p = coordinates[i];
-            var point = t(p[0], p[1], s);
+            var point = t.direct(p[0], p[1], s);
             point[0] = Math.round(point[0] - o[0]);
             point[1] = Math.round(point[1] - o[1]);
             result.push(point);
@@ -233,9 +190,17 @@ Utils.extend(GeometryRenderer.prototype, {
     getTransformation : function() {
         if (!this._transformation) {
             this._transformation = this.options.transformation
-                    || function(lon, lat, scale) {
-                        return [ scale * lon / 180, -scale * lat / 90 ];
+                    || transform(1 / 180, 0, -1 / 90, 0);
+            function transform(a, b, c, d) {
+                return {
+                    direct : function(x, y, scale) {
+                        return [ scale * (x * a + b), scale * (y * c + d) ];
+                    },
+                    inverse : function(x, y, scale) {
+                        return [ (x / scale - b) / a, (y / scale - d) / c ];
                     }
+                };
+            }
         }
         return this._transformation;
     },
@@ -256,17 +221,6 @@ Utils.extend(GeometryRenderer.prototype, {
 
 });
 
-GeometryRenderer.getTransformation = function(a, b, c, d) {
-    return {
-        direct : function(x, y, scale) {
-            return [ scale * (x * a + b), scale * (y * c + d) ];
-        },
-        inverse : function(x, y, scale) {
-            return [ (x / scale - b) / a, (y / scale - d) / c ];
-        }
-    }
-}
-
 // defines how the world scales with zoom
 GeometryRenderer.calculateScale = function(zoom, tileSize) {
     tileSize = tileSize || 256;
@@ -277,7 +231,5 @@ GeometryRenderer.calculateZoom = function(scale, tileSize) {
     tileSize = tileSize || 256;
     return Math.log(scale / tileSize) / Math.LN2;
 };
-
-GeometryRenderer.RenderStyle = RenderStyle;
 
 module.exports = GeometryRenderer;

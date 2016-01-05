@@ -1,13 +1,16 @@
 var rbush = require('rbush');
+var TurfExtent = require('turf-extent');
 var IDataProvider = require('./IDataProvider');
-var DataUtils = require('./DataUtils');
-var P = require('./P');
+var Utils = require('./utils');
 
 /**
  * A simple data provider synchronously indexing the given data using an RTree
  * index.
  */
-var SimpleDataProvider = IDataProvider.extend({
+function DataProvider() {
+    IDataProvider.apply(this, arguments);
+}
+Utils.extend(DataProvider.prototype, IDataProvider.prototype, {
 
     /** Initializes this object and indexes the initial data set. */
     initialize : function(options) {
@@ -23,10 +26,10 @@ var SimpleDataProvider = IDataProvider.extend({
     /**
      * Loads and returns indexed data contained in the specified bounding box.
      */
-    loadData : function(options) {
+    loadData : function(options, callback) {
         var that = this;
         var data = that._searchInBbox(options.bbox);
-        return P.resolve(data);
+        callback(null, data);
     },
 
     /** Indexes the specified data array using a RTree index. */
@@ -65,9 +68,7 @@ var SimpleDataProvider = IDataProvider.extend({
      * Sorts the given data array by Manhattan distance to the origin point
      */
     _sortByDistance : function(array, bbox) {
-        var lat = bbox.getNorth();
-        var lng = bbox.getEast();
-        var p = [ lat, lng ];
+        var p = bbox[0];
         array.sort(function(a, b) {
             var d1 = Math.abs(a[0] - p[0]) + Math.abs(a[1] - p[1]);
             var d2 = Math.abs(b[0] - p[0]) + Math.abs(b[1] - p[1]);
@@ -80,18 +81,19 @@ var SimpleDataProvider = IDataProvider.extend({
      * This method transforms a bounding box into a key for RTree index.
      */
     _toIndexKey : function(bbox) {
-        var sw = bbox.getSouthWest();
-        var ne = bbox.getNorthEast();
-        var coords = [ sw.lat, sw.lng, ne.lat, ne.lng ];
-        return coords;
+        bbox = bbox.map(function(v){ return +v; });
+        return bbox;
     },
 
     /**
-     * Returns an object defining a bounding box ([[south, west], [north,
-     * east]]) for the specified resource.
+     * Returns an object defining a bounding box ([south, west, north,
+     * east]) for the specified resource.
      */
-    _getBoundingBox : DataUtils.getGeoJsonBoundingBox,
+    _getBoundingBox : function(d) {
+        var bbox = d ? TurfExtent(d) : null;
+        return bbox;
+    }
 
 });
 
-module.exports = SimpleDataProvider;
+module.exports = DataProvider;
