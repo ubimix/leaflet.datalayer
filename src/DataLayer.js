@@ -11,10 +11,6 @@ var GeometryRenderer = require('./geo/GeometryRenderer');
 var ParentLayer = L.GridLayer;
 var DataLayer = ParentLayer.extend({
 
-    _getTileByCoordinates : function() {
-
-    },
-
     onAdd : function(map) {
         ParentLayer.prototype.onAdd.apply(this, arguments);
         this._map.on('mousemove', this._onMouseMove, this);
@@ -113,7 +109,7 @@ var DataLayer = ParentLayer.extend({
             }
             setTimeout(function() {
                 done(null, canvas);
-            }, 1);
+            }, 100);
         }.bind(this));
 
         return canvas;
